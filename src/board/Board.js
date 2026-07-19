@@ -25,7 +25,15 @@ import {renjuStabilizer, isOfferDup} from './renjuSymmetry';
 
 const Board = (props) => {
 
-   const {game, gameId: game_id, myTurn, onMove, onRenjuDecline, onRenjuSelect, onRenjuOffer10} = props;
+   const {
+      game,
+      gameId: game_id,
+      myTurn = false,
+      onMove = () => {},
+      onRenjuDecline = () => {},
+      onRenjuSelect = () => {},
+      onRenjuOffer10 = () => {},
+   } = props;
 
    const [renjuUi, dispatchRenjuUi] = useReducer(renjuOpeningUiReducer, RENJU_UI_INITIAL);
    const togglePick = (move) => dispatchRenjuUi(renjuTogglePick(move));
@@ -201,7 +209,7 @@ const Board = (props) => {
          // we intentionally do NOT draw a visual box highlight (per UX preference).
       }
 
-      return board.map(p => <BoardSquare {...p}/>);
+      return board.map(({key, ...rest}) => <BoardSquare key={key} {...rest}/>);
    };
    const makeCoordinateBoundaries = (gridsize) => {
       const coordinateLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'];
@@ -251,14 +259,6 @@ Board.propTypes = {
    onRenjuDecline: PropTypes.func,
    onRenjuSelect: PropTypes.func,
    onRenjuOffer10: PropTypes.func,
-};
-
-Board.defaultProps = {
-   myTurn: false,
-   onMove: () => {},
-   onRenjuDecline: () => {},
-   onRenjuSelect: () => {},
-   onRenjuOffer10: () => {},
 };
 
 export default Board;
