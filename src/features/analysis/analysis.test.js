@@ -71,11 +71,15 @@ afterEach(() => cleanup());
 
 // --- pure model additions ------------------------------------------------------
 describe('gameTree.toggleTag', () => {
-  test('adds the tag when absent, removes it when present', () => {
+  // Annotation type is mutually exclusive (sgf-pgn-formats.md L113): one of
+  // GOOD/VERY_GOOD/BAD/VERY_BAD/INTERESTING per node, mapping to a single TE/BM/IT on export.
+  test('is single-select: a new glyph replaces the active one; re-toggling clears', () => {
     let t = fixture();
     t = gtToggleTag(t, [0, 0], '!');
     expect(nodeAt(t, [0, 0]).tags).toEqual(['!']);
-    t = gtToggleTag(t, [0, 0], '!');
+    t = gtToggleTag(t, [0, 0], '?'); // replaces '!' — not additive
+    expect(nodeAt(t, [0, 0]).tags).toEqual(['?']);
+    t = gtToggleTag(t, [0, 0], '?'); // re-toggling the active glyph clears it
     expect(nodeAt(t, [0, 0]).tags).toEqual([]);
   });
 
@@ -88,13 +92,15 @@ describe('gameTree.toggleTag', () => {
 
 // --- docSlice reducers ---------------------------------------------------------
 describe('docSlice.toggleTag', () => {
-  test('toggles the tag on the cursor node and round-trips through the wire format', () => {
+  test('single-selects the glyph on the cursor node and round-trips through the wire format', () => {
     const store = makeStore(fixture(), [0, 0]);
     store.dispatch(toggleTag('!'));
     expect(nodeAt(treeOf(store), [0, 0]).tags).toEqual(['!']);
+    store.dispatch(toggleTag('??')); // replaces '!' — mutually exclusive
+    expect(nodeAt(treeOf(store), [0, 0]).tags).toEqual(['??']);
     const round = fromWire(toWire(treeOf(store)));
-    expect(nodeAt(round, [0, 0]).tags).toEqual(['!']);
-    store.dispatch(toggleTag('!'));
+    expect(nodeAt(round, [0, 0]).tags).toEqual(['??']);
+    store.dispatch(toggleTag('??')); // re-toggling the active glyph clears it
     expect(nodeAt(treeOf(store), [0, 0]).tags).toEqual([]);
     expect(store.getState().docs.tabs[0].dirty).toBe(true);
   });
@@ -219,12 +225,14 @@ describe('TagBar', () => {
     });
   });
 
-  test('renders a button per glyph and toggles the tag on the cursor node', () => {
+  test('renders a button per glyph and single-selects the tag on the cursor node', () => {
     const store = makeStore(fixture(), [0]); // cursor on 100
     renderWith(store, <TagBar />);
     fireEvent.click(screen.getByRole('button', { name: 'Very good' }));
     expect(nodeAt(treeOf(store), [0]).tags).toEqual(['!!']);
-    fireEvent.click(screen.getByRole('button', { name: 'Very good' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bad' })); // replaces '!!'
+    expect(nodeAt(treeOf(store), [0]).tags).toEqual(['?']);
+    fireEvent.click(screen.getByRole('button', { name: 'Bad' })); // clears
     expect(nodeAt(treeOf(store), [0]).tags).toEqual([]);
   });
 });

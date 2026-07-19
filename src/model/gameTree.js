@@ -87,14 +87,16 @@ export function setTag(tree, path, tag) {
   return next;
 }
 
-// Toggle an annotation tag on the node at `path`: add it when absent, remove it when present.
+// Toggle an annotation tag on the node at `path`. Annotation type is MUTUALLY EXCLUSIVE
+// (sgf-pgn-formats.md L113: one of GOOD/VERY_GOOD/BAD/VERY_BAD/INTERESTING per node, mapping to a
+// single TE/BM/IT on export), so this is single-select: setting `tag` replaces any other glyph;
+// re-toggling the currently-active glyph clears the annotation to [].
 export function toggleTag(tree, path, tag) {
   const next = cloneTree(tree);
   const node = nodeAt(next, path);
   if (!node) return next;
-  const i = node.tags.indexOf(tag);
-  if (i === -1) node.tags.push(tag);
-  else node.tags.splice(i, 1);
+  const active = node.tags.length === 1 && node.tags[0] === tag;
+  node.tags = active ? [] : [tag];
   return next;
 }
 
