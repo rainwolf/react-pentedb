@@ -7,12 +7,29 @@
 //          activeTabId,
 //          seq }   // seq is an internal id counter for tabs opened without an explicit id.
 import { createSelector, createSlice } from '@reduxjs/toolkit';
-import { createTree, addMove, nodeAt, lineTo, setTag, setComment } from './gameTree';
+import {
+  createTree,
+  addMove,
+  nodeAt,
+  lineTo,
+  setTag,
+  setComment,
+  toggleTag as gtToggleTag,
+  promoteVariation as gtPromoteVariation,
+  deleteBranch as gtDeleteBranch,
+} from './gameTree';
 
 const initialState = { tabs: [], activeTabId: null, seq: 1 };
 
 function activeTab(state) {
   return state.tabs.find((t) => t.id === state.activeTabId) || null;
+}
+
+// True when `path` starts with every index of `prefix` (i.e. path is prefix or a descendant).
+function pathHasPrefix(path, prefix) {
+  if (path.length < prefix.length) return false;
+  for (let i = 0; i < prefix.length; i++) if (path[i] !== prefix[i]) return false;
+  return true;
 }
 
 // Cycle the cursor among the current node's siblings by `dir` (+1 next, -1 prev), wrapping.
@@ -134,6 +151,56 @@ const docSlice = createSlice({
       t.dirty = true;
     },
 
+    // Toggle an annotation glyph on the cursor node (add if absent, remove if present).
+    toggleTag(state, action) {
+      const t = activeTab(state);
+      if (!t) return;
+      t.tree = gtToggleTag(t.tree, t.cursorPath, action.payload);
+      t.dirty = true;
+    },
+
+    // Make the node at `payload` (a path) the first child of its parent (new mainline), then
+    // remap the cursor so it stays on the SAME logical node through the sibling reshuffle.
+    promoteVariation(state, action) {
+      const t = activeTab(state);
+      if (!t) return;
+      const path = action.payload;
+      if (!path || path.length === 0) return;
+      t.tree = gtPromoteVariation(t.tree, path);
+      const d = path.length - 1;
+      const parentPath = path.slice(0, d);
+      const fromIdx = path[d];
+      const cur = t.cursorPath;
+      if (cur.length > d && pathHasPrefix(cur.slice(0, d), parentPath)) {
+        const idx = cur[d];
+        let newIdx = idx;
+        if (idx === fromIdx) newIdx = 0; // the promoted node -> slot 0
+        else if (idx < fromIdx) newIdx = idx + 1; // earlier siblings shift down one
+        if (newIdx !== idx) t.cursorPath = [...cur.slice(0, d), newIdx, ...cur.slice(d + 1)];
+      }
+      t.dirty = true;
+    },
+
+    // Remove the subtree at `payload` (a path). If the cursor sat on/under the deleted branch it
+    // moves to the deleted node's parent; a cursor in a later sibling is reindexed by the shift.
+    deleteBranch(state, action) {
+      const t = activeTab(state);
+      if (!t) return;
+      const path = action.payload;
+      if (!path || path.length === 0) return;
+      t.tree = gtDeleteBranch(t.tree, path);
+      const d = path.length - 1;
+      const parentPath = path.slice(0, d);
+      const removedIdx = path[d];
+      const cur = t.cursorPath;
+      if (pathHasPrefix(cur, path)) {
+        t.cursorPath = parentPath; // cursor was inside the deleted subtree
+      } else if (cur.length > d && pathHasPrefix(cur.slice(0, d), parentPath) && cur[d] > removedIdx) {
+        t.cursorPath = [...cur.slice(0, d), cur[d] - 1, ...cur.slice(d + 1)]; // later sibling shifted
+      }
+      t.dirty = true;
+    },
+
     markSaved(state) {
       const t = activeTab(state);
       if (t) t.dirty = false;
@@ -155,6 +222,9 @@ export const {
   applyMove,
   applyTag,
   applyComment,
+  toggleTag,
+  promoteVariation,
+  deleteBranch,
   markSaved,
 } = docSlice.actions;
 

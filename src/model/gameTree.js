@@ -87,6 +87,17 @@ export function setTag(tree, path, tag) {
   return next;
 }
 
+// Toggle an annotation tag on the node at `path`: add it when absent, remove it when present.
+export function toggleTag(tree, path, tag) {
+  const next = cloneTree(tree);
+  const node = nodeAt(next, path);
+  if (!node) return next;
+  const i = node.tags.indexOf(tag);
+  if (i === -1) node.tags.push(tag);
+  else node.tags.splice(i, 1);
+  return next;
+}
+
 // Set the comment text of the node at `path`.
 export function setComment(tree, path, text) {
   const next = cloneTree(tree);
