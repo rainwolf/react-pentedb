@@ -37,6 +37,7 @@ import { moveLabel } from '../explorer/StatsRows';
 import { buildBoardGame } from '../viewer/boardGameFactory';
 import { getAiCapability, requestMove, cancel } from './aiClient';
 import {
+  positionSig,
   selectAi,
   selectAiSuggestion,
   selectAiPlay,
@@ -77,6 +78,11 @@ export default function AiPanel() {
   const supported = !!(activePos && cap.supported);
   const gridSize = game != null ? gridSizeForGame(game) : 19;
 
+  // A suggestion is shown/playable only while the board still holds the position it was computed
+  // for; any navigation changes activeSig and retires the ghost + chip.
+  const activeSig = positionSig(activePos);
+  const suggestionActive = !!(suggestion && suggestion.sig === activeSig);
+
   // Mirror `thinking` into a ref so the unmount cleanup (a stable [] effect) can read the LIVE
   // busy state without re-subscribing on every status change.
   const thinkingRef = useRef(false);
@@ -116,18 +122,21 @@ export default function AiPanel() {
   const onHint = useCallback(() => {
     if (!supported || thinking || !activePos) return;
     const pos = activePos;
+    const sig = positionSig(pos); // bind the reply to THIS position
     dispatch(thinkingStarted());
     // Forward the RAW variant id (the engine owns id->rules mapping — aiClient contract).
     requestMove({ game: pos.game, level, openingBook: openingBook ? 1 : 0, moves: pos.moves })
-      .then(({ moves: cells }) => dispatch(suggestionReceived({ game: pos.game, cells })))
+      .then(({ moves: cells }) => dispatch(suggestionReceived({ game: pos.game, cells, sig })))
       .catch(onError);
   }, [supported, thinking, activePos, level, openingBook, dispatch, onError]);
 
   const onPlaySuggestion = useCallback(() => {
-    if (!suggestion) return;
+    // Guard against a stale suggestion (the position moved since it was computed) — never append
+    // an old cell onto a different position.
+    if (!suggestion || suggestion.sig !== activeSig) return;
     suggestion.cells.forEach((c) => dispatch(applyMove(c))); // Connect6 pair = two appends
     dispatch(clearSuggestion());
-  }, [suggestion, dispatch]);
+  }, [suggestion, activeSig, dispatch]);
 
   const onTogglePlay = useCallback(
     (on) => {
@@ -269,12 +278,22 @@ export default function AiPanel() {
       )}
 
       {error && (
-        <Alert severity="error" data-testid="ai-error" onClose={() => dispatch(clearError())}>
+        <Alert
+          severity="error"
+          data-testid="ai-error"
+          onClose={() => {
+            // Dismissing the error re-arms the play-vs-AI auto-answer for the current position so
+            // a one-off engine hiccup can be retried without toggling the mode off/on. The dedup
+            // guard still blocks a tight loop: a repeat crash just re-raises this same error.
+            answeredSigRef.current = null;
+            dispatch(clearError());
+          }}
+        >
           {error}
         </Alert>
       )}
 
-      {suggestion && suggestion.game === game && (
+      {suggestionActive && (
         <Chip
           color="secondary"
           variant="outlined"

@@ -14,7 +14,7 @@ import { useSelector } from 'react-redux';
 import { selectActivePosition } from '../../model/docSlice';
 import { symCell } from '../viewer/boardSymmetry';
 import { gridSizeForGame } from '../../board/boardGeometry';
-import { selectAiSuggestion } from './aiSlice';
+import { selectAiSuggestion, positionSig } from './aiSlice';
 
 const ACCENT = '#7c4dff'; // deep violet — clear of the heat ramp's blue→red band
 
@@ -23,7 +23,9 @@ export default function AiGhostOverlay({ rotation = 0, size = '100%' }) {
   const activePos = useSelector(selectActivePosition);
 
   if (!suggestion || !activePos) return null;
-  if (suggestion.game !== activePos.game) return null; // stale hint from another variant
+  // Only paint while the board still shows the exact position the hint was computed for — this
+  // also covers a stale hint from another variant (the game id is part of the signature).
+  if (suggestion.sig !== positionSig(activePos)) return null;
   const cells = suggestion.cells || [];
   if (cells.length === 0) return null;
 

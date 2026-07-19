@@ -16,9 +16,20 @@ const initialState = {
   openingBook: false, // forwarded to requestMove as openingBook 0|1
   status: 'idle', // 'idle' | 'thinking' | 'error' — single in-flight; 'thinking' locks the board
   error: null, // user-visible message when status === 'error'
-  suggestion: null, // { game, cells: number[] } — 1 cell, or 2 for a Connect6 pair — or null
+  // A Hint suggestion, bound to the position it was computed for: { game, cells, sig } — 1 cell,
+  // or 2 for a Connect6 pair. `sig` is positionSig() of the request's line; the ghost + chip only
+  // render while the active position still matches it, so navigating away can't play a stale cell.
+  suggestion: null,
   play: { on: false, aiPlayer: 2 }, // play-vs-AI: aiPlayer 1 (moves first) | 2 (moves second)
 };
+
+// The identity of a board position a suggestion was computed for: variant + the exact line to the
+// cursor. A suggestion is valid only while the active position still equals this; after any
+// navigation (navNext/navPrev/node click) the ghost + clickable chip must vanish so an old cell is
+// never appended onto a different position (onPlaySuggestion has no legality check).
+export function positionSig(pos) {
+  return pos ? `${pos.game}:${(pos.moves || []).join('-')}` : '';
+}
 
 const aiSlice = createSlice({
   name: 'ai',

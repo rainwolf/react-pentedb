@@ -15,7 +15,7 @@ import { Provider } from 'react-redux';
 import { render, screen, fireEvent, act, cleanup, waitFor } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
-import docsReducer, { openTab, selectActivePosition } from '../../model/docSlice';
+import docsReducer, { openTab, navPrev, selectActivePosition } from '../../model/docSlice';
 import { createTree, addMove } from '../../model/gameTree';
 
 // The ONLY seam to the engine. Keep getAiCapability real (pure), stub the async surface.
@@ -125,6 +125,31 @@ describe('AiPanel — Hint / ghost suggestion', () => {
     expect(screen.getByTestId('ai-suggestion-chip').textContent).toMatch(/[A-HJ-T]\d/);
     // and a distinct ghost is painted on the board for the suggested cell
     expect(container.querySelector('[data-testid="ai-ghost-200"]')).toBeTruthy();
+  });
+
+  test('the suggestion is bound to its position — navigating away removes the ghost AND the chip', async () => {
+    requestMove.mockResolvedValue({ moves: [200] });
+    const store = makeStore([180], [0], 1);
+    const { container } = renderWith(
+      store,
+      <>
+        <AiPanel />
+        <AiGhostOverlay />
+      </>
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('ai-hint'));
+    });
+    await waitFor(() => expect(screen.getByTestId('ai-suggestion-chip')).toBeTruthy());
+    expect(container.querySelector('[data-testid="ai-ghost-200"]')).toBeTruthy();
+
+    // Step to a DIFFERENT position: the suggestion (cell 200 for the line [180]) no longer
+    // applies, so both the ghost and the clickable chip must disappear.
+    await act(async () => {
+      store.dispatch(navPrev());
+    });
+    expect(screen.queryByTestId('ai-suggestion-chip')).toBeNull();
+    expect(container.querySelector('[data-testid="ai-ghost-200"]')).toBeNull();
   });
 
   test('clicking the suggestion chip plays the move into the tree', async () => {
