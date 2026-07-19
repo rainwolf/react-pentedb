@@ -69,8 +69,9 @@ function randomTree(seed, n) {
     made += 1;
     if (rnd() < 0.35) tree = setTag(tree, res.path, glyphs[Math.floor(rnd() * glyphs.length)]);
     if (rnd() < 0.3) {
-      // Safe comment alphabet (no ']' / '\\') so the documented escaping lossiness is not in play.
-      const words = ['open', 'key', 'joseki', 'tenuki', 'threat 3', 'calm move'];
+      // Alphabet deliberately includes ']' and '\\' (and the '\\]' sequence) so the escape/unescape
+      // path is exercised by the property test, not just the dedicated escaping cases below.
+      const words = ['open', 'key', 'a]b', 'c\\d', 'e\\]f', 'threat 3', 'x]]y', 'trailing\\'];
       tree = setComment(tree, res.path, words[Math.floor(rnd() * words.length)]);
     }
     paths.push(res.path);
@@ -86,6 +87,57 @@ describe('parse(export(x)) === x — property style, seeded 30-node tree', () =>
     const res = parseSgf(sgf);
     expect(res.tree).toEqual(wire);
     expect(res.name).toBe('rnd');
+  });
+});
+
+describe('SGF value escaping (]/\\) is lossless through export -> parse', () => {
+  // esc() diverges from the desktop's byte-faithful (lossy) output by escaping '\' -> '\\' and
+  // ']' -> '\]' (formats.md §3.3 L122 "robust port" form). These cases give that path direct
+  // coverage: a node comment AND an analysis name carrying ']', '\', and the combined '\]'
+  // sequence must survive a full round-trip. The runtime strings below contain literal
+  // backslashes/brackets ('a]b\\c\\]d' === a ] b \ c \ ] d).
+  const HARD = 'a]b\\c\\]d';
+
+  test('analysis: node comment + name with ]/\\ round-trip losslessly', () => {
+    const wire = {
+      v: 1,
+      root: { m: null, kids: [{ m: 180, kids: [{ m: 179, c: HARD }] }] },
+    };
+    const sgf = exportAnalysisSgf({ name: HARD, game: 1, tree: wire });
+    const res = parseSgf(sgf);
+    expect(res.name).toBe(HARD);
+    expect(res.tree).toEqual(wire);
+  });
+
+  test('analysis: bare "]", bare "\\", and a trailing "\\" each survive', () => {
+    for (const c of [']', '\\', 'x\\', ']]', '\\]']) {
+      const wire = { v: 1, root: { m: null, kids: [{ m: 180, c }] } };
+      const res = parseSgf(exportAnalysisSgf({ name: c, game: 1, tree: wire }));
+      expect(res.name).toBe(c);
+      expect(res.tree).toEqual(wire);
+    }
+  });
+
+  test('game: header text fields with ]/\\ round-trip losslessly', () => {
+    const header = {
+      game: 1,
+      dbName: HARD,
+      site: 'a]b',
+      event: 'c\\d',
+      player1: { name: 'p]1', rating: 1850 },
+      player2: { name: 'p\\2', rating: 1720 },
+      result: 'player1',
+      rated: true,
+      timeControl: '5+10',
+    };
+    const res = parseSgf(exportGameSgf(header, [180, 179]));
+    expect(res.kind).toBe('game');
+    expect(res.header.dbName).toBe(HARD);
+    expect(res.header.site).toBe('a]b');
+    expect(res.header.event).toBe('c\\d');
+    expect(res.header.player1.name).toBe('p]1');
+    expect(res.header.player2.name).toBe('p\\2');
+    expect(res.moves).toEqual([180, 179]);
   });
 });
 
