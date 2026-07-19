@@ -1,0 +1,102 @@
+/* Board-relevant CSS subset ported from react_live_game_room/src/App.css.
+   Only the rules Board/BoardSquare/Stone/Territory/LastMove reference are
+   included (grid lines, hoshi dots, stone radial-gradient color vars, and
+   the 13 per-variant board-color fill classes). Room/chat/table chrome
+   (.name a, @keyframes glowing, .button-glow) is intentionally excluded —
+   out of scope for the board+rules copy (contract §5: no external images,
+   only CSS needs porting). */
+
+.boardline {
+    stroke: #000000;
+    stroke-width: 0.25px;
+    pointer-events: none;
+}
+
+.boardcircle {
+    stroke: #000000;
+    stroke-width: 0.25px;
+    pointer-events: none;
+}
+
+.boarddot {
+    stroke: #000000;
+    fill: #000000;
+    stroke-width: 1px;
+    pointer-events: none;
+}
+
+.board {
+    user-drag: none;
+    user-select: none;
+}
+
+#black-stone-gradient {
+    --color1: grey;
+    --color2: black;
+}
+
+#white-stone-gradient {
+    --color1: white;
+    --color2: gainsboro;
+}
+
+#red-stone-gradient {
+    --color1: pink;
+    --color2: red;
+}
+
+.pente {
+    fill: #FDDEA3;
+}
+
+.keryo-pente {
+    fill: #BAFDA3;
+}
+
+.gomoku {
+    fill: #A3FDEB;
+}
+
+.d-pente {
+    fill: #A3CDFD;
+}
+
+.g-pente {
+    fill: #AEA3FD;
+}
+
+.poof-pente {
+    fill: #EDA3FD;
+}
+
+.connect6 {
+    fill: #EDA3FD;
+}
+
+.boat-pente {
+    fill: #25BAFF;
+}
+
+.dk-pente {
+    fill: #FFA500;
+}
+
+.go {
+    fill: #FAC832;
+}
+
+.o-pente {
+    fill: #52BE80
+}
+
+.swap2-pente {
+    fill: #E5AA70
+}
+
+.swap2-keryo {
+    fill: #50C878
+}
+
+.renju {
+    fill: #D98880
+}
