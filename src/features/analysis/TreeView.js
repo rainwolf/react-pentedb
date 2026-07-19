@@ -19,6 +19,7 @@ import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 
 import { navTo, promoteVariation, deleteBranch } from '../../model/docSlice';
+import ExportMenu from '../exchange/ExportMenu';
 
 const LONG_PRESS_MS = 500;
 
@@ -101,6 +102,9 @@ export default function TreeView() {
 
   return (
     <Box data-testid="tree-view" sx={{ px: 1, py: 0.5, overflow: 'auto' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+        <ExportMenu label="Export tree" size="small" />
+      </Box>
       {rows.map((row, ri) => (
         <Box
           key={`row-${ri}-${row.items.map((it) => it.path.join('.')).join('_')}`}

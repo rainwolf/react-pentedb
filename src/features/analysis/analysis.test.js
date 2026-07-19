@@ -35,6 +35,12 @@ import TagBar, { TAG_GLYPHS } from './TagBar';
 import CommentBox from './CommentBox';
 import MoveStrip from '../viewer/MoveStrip';
 
+// TreeView now renders an ExportMenu (P3 Task 5), which calls useGameQuery — stub it so these
+// pre-existing stores (docsReducer only, no RTK-Query middleware) don't need the real api slice.
+vi.mock('../../app/api', () => ({
+  useGameQuery: () => ({ data: undefined, isLoading: true }),
+}));
+
 const theme = createTheme();
 
 // The canonical 2-branch fixture (mirrors gameTree.test):

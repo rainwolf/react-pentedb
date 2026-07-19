@@ -47,6 +47,13 @@ import { symCell, symMoves, invSymCell, symXY, SYMMETRY_COUNT } from './boardSym
 // eslint-disable-next-line import/first
 import { buildBoardGame, capturesByColor } from './boardGameFactory';
 
+// GameHeaderBar now renders an ExportMenu (P3 Task 5), which calls useGameQuery — stub it so
+// these pre-existing stores (docsReducer only, no RTK-Query middleware) don't need the real
+// api slice.
+vi.mock('../../app/api', () => ({
+  useGameQuery: () => ({ data: undefined, isLoading: true }),
+}));
+
 const theme = createTheme();
 const N = 19;
 

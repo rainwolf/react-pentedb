@@ -6,6 +6,7 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import { selectActivePosition } from '../../model/docSlice';
 import { buildBoardGame, capturesByColor } from './boardGameFactory';
+import ExportMenu from '../exchange/ExportMenu';
 
 // colour 1 renders as the white stone, colour 2 as black (Board's player_colors order).
 function StoneDot({ color }) {
@@ -69,6 +70,7 @@ export default function GameHeaderBar() {
       <Typography variant="caption" color="text.secondary" data-testid="to-move" noWrap>
         {toMove === 1 ? 'White to move' : 'Black to move'}
       </Typography>
+      <ExportMenu />
     </Box>
   );
 }
