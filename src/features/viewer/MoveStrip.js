@@ -1,7 +1,6 @@
 // Horizontal move strip under the board: chips for the current line (root -> cursor, then the
 // mainline continuation to the leaf), the cursor highlighted, each branched node badged `+n`
 // with its alternative-continuation count. Clicking a chip jumps the cursor there (navTo).
-import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
@@ -47,7 +46,7 @@ export default function MoveStrip() {
     <Stack direction="row" spacing={0.5} sx={{ px: 1, py: 0.5, overflowX: 'auto', flexWrap: 'nowrap' }}>
       {items.map((it, i) => (
         <Chip
-          key={i}
+          key={it.path.join('-')}
           size="small"
           color={it.isCursor ? 'primary' : 'default'}
           variant={it.isCursor ? 'filled' : 'outlined'}

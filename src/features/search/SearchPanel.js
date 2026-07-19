@@ -2,7 +2,7 @@
 // wires auth UI) + FilterForm + ResultsList, composed here and wired to the live game/
 // filters state. Lazy-loaded from Workbench.js — this file's own export stays the same
 // default-export shape the lazy() call already expects.
-import React, { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';

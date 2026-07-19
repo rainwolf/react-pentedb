@@ -1,4 +1,4 @@
-import React, {Component} from 'react';
+import {Component} from 'react';
 import Stone from './Stone';
 import Territory from './Territory';
 import LastMove from './LastMove';

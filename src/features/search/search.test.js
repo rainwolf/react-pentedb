@@ -13,11 +13,10 @@
 //     range function used for virtualization.
 //   - row click opens a game tab at the final position: dispatches docSlice openTab with the
 //     clicked gid, kind 'game', and a tree built from the loaded game's moves.
-import React from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';
-import { render, screen, fireEvent, act, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import docsReducer from '../../model/docSlice';
@@ -228,13 +227,13 @@ describe('useVenueOptions', () => {
 // ===================================================================================
 describe('paginationLabel', () => {
   test('computes "Showing x-y of total"', () => {
-    expect(paginationLabel(0, 25, 100, 25)).toBe('Showing 1–25 of 100');
-    expect(paginationLabel(25, 25, 100, 25)).toBe('Showing 26–50 of 100');
-    expect(paginationLabel(90, 25, 100, 10)).toBe('Showing 91–100 of 100');
+    expect(paginationLabel(0, 100, 25)).toBe('Showing 1–25 of 100');
+    expect(paginationLabel(25, 100, 25)).toBe('Showing 26–50 of 100');
+    expect(paginationLabel(90, 100, 10)).toBe('Showing 91–100 of 100');
   });
 
   test('zero results shows "Showing 0 of 0"', () => {
-    expect(paginationLabel(0, 25, 0, 0)).toBe('Showing 0 of 0');
+    expect(paginationLabel(0, 0, 0)).toBe('Showing 0 of 0');
   });
 });
 

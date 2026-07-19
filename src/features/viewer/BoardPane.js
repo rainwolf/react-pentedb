@@ -11,7 +11,7 @@
 //   - Touch: on a coarse pointer, tap-confirm (spec §9) — a tap sets a pending ghost stone
 //     (shown on the view board) and a Confirm button commits it; tapping elsewhere moves the
 //     ghost. Prevents fat-finger misplays.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';

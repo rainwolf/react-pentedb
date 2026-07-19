@@ -6,7 +6,7 @@
 //                   cursorPath, dirty }],
 //          activeTabId,
 //          seq }   // seq is an internal id counter for tabs opened without an explicit id.
-import { createSlice } from '@reduxjs/toolkit';
+import { createSelector, createSlice } from '@reduxjs/toolkit';
 import { createTree, addMove, nodeAt, lineTo, setTag, setComment } from './gameTree';
 
 const initialState = { tabs: [], activeTabId: null, seq: 1 };
@@ -158,12 +158,35 @@ export const {
   markSaved,
 } = docSlice.actions;
 
-// Derived active position for the board/selectors layer.
-export function selectActivePosition(state) {
-  const docs = state.docs;
-  const t = docs.tabs.find((tb) => tb.id === docs.activeTabId);
-  if (!t) return null;
-  return { game: t.game, moves: lineTo(t.tree, t.cursorPath), cursorPath: t.cursorPath };
-}
+const selectDocsTabs = (state) => state.docs.tabs;
+const selectActiveTabId = (state) => state.docs.activeTabId;
+
+// Memoized: only recomputes when the tabs array reference or the active tab id changes.
+const selectActiveTab = createSelector(
+  [selectDocsTabs, selectActiveTabId],
+  (tabs, activeTabId) => tabs.find((tb) => tb.id === activeTabId) || null
+);
+
+const selectActiveTabTree = (state) => {
+  const t = selectActiveTab(state);
+  return t ? t.tree : null;
+};
+
+const selectActiveTabCursorPath = (state) => {
+  const t = selectActiveTab(state);
+  return t ? t.cursorPath : null;
+};
+
+// Derived active position for the board/selectors layer. Memoized on the active tab's
+// identity, tree, and cursorPath so repeated calls against an unchanged position return the
+// SAME object reference — avoids react-redux's "selector returned a different result" dev
+// warning and unnecessary downstream re-renders.
+export const selectActivePosition = createSelector(
+  [selectActiveTab, selectActiveTabTree, selectActiveTabCursorPath],
+  (t, tree, cursorPath) => {
+    if (!t) return null;
+    return { game: t.game, moves: lineTo(tree, cursorPath), cursorPath };
+  }
+);
 
 export default docSlice.reducer;

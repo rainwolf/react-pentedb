@@ -1,4 +1,4 @@
-import React, {useReducer} from 'react';
+import {useReducer} from 'react';
 import BoardSquare from './BoardSquare';
 import {GameState, Game} from '../game/GameClass';
 import PropTypes from 'prop-types';

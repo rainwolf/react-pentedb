@@ -13,7 +13,7 @@
 // to BoardPane; wiring the overlay onto that board (lifting its rotation to shared state) is
 // a Task 9 integration item. The rotation transform itself is exercised by HeatOverlay's unit
 // tests at rotation ≠ 0.
-import React, { useCallback, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';

@@ -2,7 +2,7 @@
 //
 // Player-name autocomplete debounces locally (300ms, 2-char minimum) before calling
 // usePlayersQuery — the api slice deliberately has no debounce of its own.
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';

@@ -1,7 +1,6 @@
 // Transport controls under the board: first / prev / next / last, plus sibling-variation
 // up/down. Thin dispatchers over docSlice nav actions (Task 3 names verbatim). The aria-labels
 // are load-bearing — the Workbench URL-sync tests click "Previous move" — so keep them stable.
-import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';

@@ -1,6 +1,6 @@
 // Header above the board: document title, per-player capture score, and side-to-move — all
 // derived from the active tab and its replayed GameClass (Task 2/3 sources of truth).
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';

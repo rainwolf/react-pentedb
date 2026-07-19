@@ -3,7 +3,7 @@
 // scroll-windowing math a longer list would need). Row click loads the full game and opens
 // it as a docSlice tab at its final position, reusing Workbench's tab-id convention and
 // tree-building helper so a search result and the /g/:gid route resolve to the same tab.
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -22,7 +22,7 @@ const VIEWPORT_HEIGHT = ROW_HEIGHT * 7;
 const OVERSCAN = 3;
 
 // Pure: offset/limit/total/count -> "Showing x-y of total" (or "Showing 0 of 0").
-export function paginationLabel(offset, limit, total, count) {
+export function paginationLabel(offset, total, count) {
   if (total === 0 || count === 0) return 'Showing 0 of 0';
   const from = offset + 1;
   const to = offset + count;
@@ -178,7 +178,7 @@ export default function ResultsList({ game, scope, filters, moves }) {
         </Box>
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, py: 0.5 }}>
-        <Typography variant="caption">{paginationLabel(offset, PAGE_SIZE, total, games.length)}</Typography>
+        <Typography variant="caption">{paginationLabel(offset, total, games.length)}</Typography>
         <Box>
           <IconButton
             aria-label="Previous page"

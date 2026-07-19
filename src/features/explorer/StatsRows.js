@@ -7,7 +7,6 @@
 // (canonical) and/or maps it to a display cell for the ghost/heat overlay (see HeatOverlay).
 // Row labels are the canonical board coordinate (A1-style), so they name the true move
 // regardless of any view rotation the board is currently showing.
-import React from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
@@ -124,7 +123,7 @@ export default function StatsRows({ rows = [], gridSize = 19, onSelect = () => {
         }}
       >
         <Typography variant="body2" sx={{ width: 44, fontWeight: 600 }}>
-          Total
+          Listed moves
         </Typography>
         <Typography variant="body2" sx={{ width: 48, textAlign: 'right', fontWeight: 600 }}>
           {totals.games}

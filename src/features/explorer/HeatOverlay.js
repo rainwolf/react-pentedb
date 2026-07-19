@@ -11,7 +11,6 @@
 //
 // Geometry is a plain 10-unit grid (placeholder alignment; the Phase 4 pass tunes exact
 // registration against the real board's transforms).
-import React from 'react';
 
 import { symCell } from '../viewer/boardSymmetry';
 import heatScale from './heatScale';

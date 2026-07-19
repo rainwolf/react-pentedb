@@ -12,7 +12,6 @@
 // viewer's OWN interaction/nav logic. The stub captures the props <Board> was rendered with
 // (crucially `onMove`) so we can drive move callbacks the real board would only fire for
 // legal empty cells — including the occupied-cell path the real board never fires.
-import React from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';

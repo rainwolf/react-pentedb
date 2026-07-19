@@ -8,7 +8,6 @@
 // Board is stubbed out — its own rendering is covered elsewhere (board/__tests__ +
 // the Playwright smoke test); these tests are about routing/tabs/URL sync, and a real
 // <Board> would only add unrelated surface area to fail on.
-import React from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';

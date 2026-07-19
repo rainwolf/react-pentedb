@@ -14,7 +14,6 @@
 //     in position-constrained mode with the canonical line.
 //   - ResultsList: position-constrained mode (moves prop) includes `moves` in the search arg
 //     and shows a "games through this position" header; filter-only mode still omits `moves`.
-import React from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';

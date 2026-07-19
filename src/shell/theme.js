@@ -2,7 +2,7 @@
 // are widened to match the workbench's own 768/1200 collapse points (responsive.js) so
 // any MUI-native responsive helpers added later (useMediaQuery, Hidden, etc.) agree with
 // useBreakpoint() rather than defining a second, conflicting set of thresholds.
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { createTheme } from '@mui/material/styles';
 
 export const THEME_STORAGE_KEY = 'pentedb.themeMode';
@@ -14,7 +14,7 @@ function systemPrefersDark() {
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-color-scheme: dark)').matches
     );
-  } catch (e) {
+  } catch {
     return false;
   }
 }
@@ -23,7 +23,7 @@ function readStoredMode() {
   try {
     const v = typeof window !== 'undefined' ? window.localStorage.getItem(THEME_STORAGE_KEY) : null;
     return v === 'light' || v === 'dark' ? v : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -31,7 +31,7 @@ function readStoredMode() {
 function writeStoredMode(mode) {
   try {
     if (typeof window !== 'undefined') window.localStorage.setItem(THEME_STORAGE_KEY, mode);
-  } catch (e) {
+  } catch {
     // Ignore write failures (private browsing / storage disabled) — the mode still
     // works for the current session, it just won't persist.
   }

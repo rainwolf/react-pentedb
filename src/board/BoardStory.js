@@ -1,4 +1,3 @@
-import React from 'react';
 import Board from './Board';
 import {Game, GameState} from '../game/GameClass';
 import '../resources/board.css';
