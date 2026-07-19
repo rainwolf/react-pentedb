@@ -33,6 +33,9 @@ vi.mock('../app/api', () => ({
   useGamesSearchQuery: vi.fn(() => ({ data: { total: 0, games: [] }, isFetching: false })),
   useVenuesQuery: vi.fn(() => ({ data: { variants: [] }, isLoading: false })),
   usePlayersQuery: vi.fn(() => ({ data: { players: [] }, isFetching: false })),
+  // The wide/medium layout's right panel defaults to the real (Task 8) ExplorerPanel —
+  // stub its position-stats hook for the same reason.
+  usePositionStatsQuery: vi.fn(() => ({ data: undefined, isFetching: false })),
 }));
 
 // eslint-disable-next-line import/first

@@ -51,23 +51,34 @@ function winnerGlyph(header) {
   return '—'; // em dash = no winner / draw / unknown
 }
 
-export default function ResultsList({ game, scope, filters }) {
+export default function ResultsList({ game, scope, filters, moves }) {
   const dispatch = useDispatch();
   const tabs = useSelector((s) => s.docs.tabs);
   const [offset, setOffset] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [openingGid, setOpeningGid] = useState(null);
 
-  // A new search (game/scope/filters changed) always starts back at page 1.
+  // Position-constrained ("games through here") mode: when the explorer passes a `moves`
+  // line, the search is scoped to games passing through that CANONICAL position. Without the
+  // prop this stays Task 7's filter-only search. `movesKey` gives the effect/query a stable
+  // dependency (a plain array would be a fresh reference every render).
+  const positionMode = Array.isArray(moves);
+  const movesKey = positionMode ? moves.join('-') : null;
+
+  // A new search (game/scope/filters/position changed) always starts back at page 1.
   useEffect(() => {
     setOffset(0);
     setScrollTop(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, scope, filters]);
+  }, [game, scope, filters, movesKey]);
 
-  // Task 7 is filter-only search: `moves` is intentionally omitted (not sent as null/[])
-  // so the backend takes the pente_game filter path rather than the position-hash path.
-  const { data, isFetching } = useGamesSearchQuery({ game, scope, filters, offset, limit: PAGE_SIZE });
+  // Filter-only search omits `moves` entirely (not null/[]) so the backend takes the
+  // pente_game filter path; position-constrained mode includes the canonical `moves` line so
+  // it takes the position-hash path.
+  const searchArg = positionMode
+    ? { game, moves, scope, filters, offset, limit: PAGE_SIZE }
+    : { game, scope, filters, offset, limit: PAGE_SIZE };
+  const { data, isFetching } = useGamesSearchQuery(searchArg);
   const games = (data && data.games) || [];
   const total = (data && data.total) || 0;
 
@@ -111,6 +122,11 @@ export default function ResultsList({ game, scope, filters }) {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+      {positionMode && (
+        <Typography variant="caption" color="text.secondary" sx={{ px: 1, py: 0.5 }} data-testid="position-mode-header">
+          Games through this position{moves.length ? ` (${moves.length} moves)` : ''}
+        </Typography>
+      )}
       <Box
         sx={{ height: VIEWPORT_HEIGHT, overflowY: 'auto', position: 'relative' }}
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
