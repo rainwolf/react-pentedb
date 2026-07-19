@@ -20,8 +20,8 @@ import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import { usePositionStatsQuery } from '../../app/api';
-import { selectScope } from '../../app/uiSlice';
+import { usePositionStatsQuery, usePingQuery } from '../../app/api';
+import { selectScope, selectEffectiveScope } from '../../app/uiSlice';
 import { applyMove } from '../../model/docSlice';
 import { gridSizeForGame } from '../../board/boardGeometry';
 import PanelError from '../../shell/PanelError';
@@ -36,7 +36,10 @@ export default function ExplorerPanel() {
   const dispatch = useDispatch();
   const pos = useDebouncedPosition(150);
   const [hoverCell, setHoverCell] = useState(null);
-  const scope = useSelector(selectScope);
+  const { data: ping } = usePingQuery();
+  // Effective scope coerces mine/both -> archive when unauthenticated, so a logout/expiry
+  // never leaves the stats + "games through here" list firing 401-ing authed queries.
+  const scope = selectEffectiveScope(ping?.auth ?? null, useSelector(selectScope));
 
   const hasPos = !!pos;
   const game = pos ? pos.game : 1;

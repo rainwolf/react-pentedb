@@ -406,4 +406,14 @@ describe('SearchPanel', () => {
       expect.objectContaining({ game: 1, scope: 'mine', filters: null })
     );
   });
+
+  test('logged OUT with a lingering mine scope coerces results back to archive and hides the toggle', () => {
+    usePingQuery.mockReturnValue({ data: { auth: null } });
+    const store = makeStore('mine'); // ui slice still says 'mine' from before logout
+    renderWith(store, <SearchPanel />);
+    expect(screen.queryByLabelText('Mine')).toBeNull(); // no scope toggle while anonymous
+    expect(useGamesSearchQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ game: 1, scope: 'archive', filters: null })
+    );
+  });
 });

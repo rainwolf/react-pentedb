@@ -10,7 +10,7 @@ import { api } from './api';
 
 // The ui slice + its actions/selector live in ./uiSlice so they can be imported without
 // pulling in the real api slice (see uiSlice.js). Re-export for existing import sites.
-export { setScope, selectScope } from './uiSlice';
+export { setScope, selectScope, selectEffectiveScope } from './uiSlice';
 export { uiReducer };
 
 export const store = configureStore({

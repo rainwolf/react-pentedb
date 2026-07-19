@@ -28,10 +28,13 @@ vi.mock('../../app/api', () => ({
   usePositionStatsQuery: vi.fn(),
   useGamesSearchQuery: vi.fn(),
   useGameQuery: vi.fn(),
+  usePingQuery: vi.fn(),
 }));
 
 // eslint-disable-next-line import/first
-import { usePositionStatsQuery, useGamesSearchQuery, useGameQuery } from '../../app/api';
+import { usePositionStatsQuery, useGamesSearchQuery, useGameQuery, usePingQuery } from '../../app/api';
+// eslint-disable-next-line import/first
+import uiReducer from '../../app/uiSlice';
 // eslint-disable-next-line import/first
 import heatScale from './heatScale';
 // eslint-disable-next-line import/first
@@ -85,10 +88,23 @@ beforeEach(() => {
   usePositionStatsQuery.mockReset();
   useGamesSearchQuery.mockReset();
   useGameQuery.mockReset();
+  usePingQuery.mockReset();
   usePositionStatsQuery.mockReturnValue({ data: STATS, isFetching: false });
   useGamesSearchQuery.mockReturnValue({ data: { total: 0, games: [] }, isFetching: false });
   useGameQuery.mockReturnValue({ data: undefined, isSuccess: false });
+  usePingQuery.mockReturnValue({ data: { auth: 'iostest' } });
 });
+
+// A store whose ui slice carries a preloaded scope, plus one scratch tab at [180].
+function makeScopedStore(scope) {
+  const store = configureStore({
+    reducer: { docs: docsReducer, ui: uiReducer },
+    preloadedState: { ui: { scope } },
+  });
+  const { tree } = treeFromLine([180]);
+  store.dispatch(openTab({ id: 't', kind: 'scratch', title: 'T', game: 1, tree, cursorPath: [0] }));
+  return store;
+}
 
 afterEach(() => {
   cleanup();
@@ -304,6 +320,18 @@ describe('ExplorerPanel', () => {
     renderWith(makeStore([180], [0]), <ExplorerPanel />);
     expect(screen.getByText('stats boom')).toBeTruthy();
     expect(screen.queryByTestId('explorer-summary')).toBeNull();
+  });
+
+  test('logged-in scope=mine queries with the selected scope', () => {
+    usePingQuery.mockReturnValue({ data: { auth: 'iostest' } });
+    renderWith(makeScopedStore('mine'), <ExplorerPanel />);
+    expect(usePositionStatsQuery.mock.calls.at(-1)[0].scope).toBe('mine');
+  });
+
+  test('logged OUT coerces a lingering mine scope back to archive (no 401 loop)', () => {
+    usePingQuery.mockReturnValue({ data: { auth: null } });
+    renderWith(makeScopedStore('mine'), <ExplorerPanel />);
+    expect(usePositionStatsQuery.mock.calls.at(-1)[0].scope).toBe('archive');
   });
 });
 

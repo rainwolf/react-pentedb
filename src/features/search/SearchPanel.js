@@ -14,7 +14,7 @@ import Tab from '@mui/material/Tab';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 
 import { usePingQuery } from '../../app/api';
-import { selectScope } from '../../app/uiSlice';
+import { selectScope, selectEffectiveScope } from '../../app/uiSlice';
 import FilterForm from './FilterForm';
 import ResultsList from './ResultsList';
 import ScopeToggle from '../collection/ScopeToggle';
@@ -29,7 +29,9 @@ export default function SearchPanel() {
 
   const { data: ping } = usePingQuery();
   const authName = ping?.auth ?? null;
-  const scope = useSelector(selectScope);
+  // Effective scope falls back to 'archive' when unauthenticated, so a logout/expiry never
+  // leaves the results firing 401-ing mine/both queries.
+  const scope = selectEffectiveScope(authName, useSelector(selectScope));
 
   const handleSubmit = useCallback(({ game: g, filters: f }) => {
     setGame(g);
