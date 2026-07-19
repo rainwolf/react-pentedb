@@ -6,8 +6,10 @@ import MenuIcon from '@mui/icons-material/Menu';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 
+import UserMenu from '../features/auth/UserMenu';
+
 // Top app bar: title, a hamburger button (medium breakpoint only — opens the left
-// search-panel drawer) and a light/dark theme toggle.
+// search-panel drawer), a light/dark theme toggle, and the login/account affordance.
 export default function TopBar({ mode, onToggleTheme, onOpenDrawer, showMenuButton }) {
   return (
     <AppBar position="static" color="default" elevation={1}>
@@ -20,6 +22,7 @@ export default function TopBar({ mode, onToggleTheme, onOpenDrawer, showMenuButt
         <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
           pentedb
         </Typography>
+        <UserMenu />
         <IconButton
           aria-label={mode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
           onClick={onToggleTheme}

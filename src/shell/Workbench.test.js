@@ -25,6 +25,9 @@ vi.mock('../board/Board', () => ({
 }));
 
 vi.mock('../app/api', () => ({
+  // TopBar renders UserMenu (P3 Task 1), which calls usePingQuery — stub it anonymous so
+  // that path doesn't crash on an unmocked import; auth state isn't under test here.
+  usePingQuery: vi.fn(() => ({ data: { ok: true, auth: null }, refetch: vi.fn() })),
   useGameQuery: vi.fn(() => ({ data: undefined, isLoading: true, isSuccess: false })),
   useAnalysisQuery: vi.fn(() => ({ data: undefined, isLoading: true, isSuccess: false })),
   // The wide-breakpoint layout renders the real (Task 7) SearchPanel in the left pane —

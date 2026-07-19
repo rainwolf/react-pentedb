@@ -28,6 +28,13 @@ export const api = createApi({
   baseQuery: fetchBaseQuery({ baseUrl: '/api/db', credentials: 'include' }),
   tagTypes: ['Analyses', 'Collection'],
   endpoints: (builder) => ({
+    // --- auth (Phase 3 Task 1) -----------------------------------------------------
+    // GET /api/db/ping → {ok, auth:"name"|null} — session probe. `auth` is the BINDING
+    // signal every later Phase-3 task derives login state from (see authSlice.js).
+    ping: builder.query({
+      query: () => '/ping',
+    }),
+
     // --- position stats (Phase 1 Task 3) -----------------------------------------
     // POST /api/db/position-stats  {game, moves, scope, filters}
     //   → {totalGames, totalWinPct, rotation, nextMoves:[{move, games, wins, winPct}]}
@@ -155,6 +162,7 @@ export const api = createApi({
 });
 
 export const {
+  usePingQuery,
   usePositionStatsQuery,
   useGamesSearchQuery,
   useGameQuery,
