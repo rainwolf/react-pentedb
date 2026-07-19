@@ -67,6 +67,13 @@ export default function BoardPane({ pointerCoarse } = {}) {
     [activePos ? activePos.game : null, displayMoves]
   );
 
+  // A staged tap-confirm ghost belongs to the position it was placed on. When the active
+  // position changes for ANY reason (nav buttons, keyboard, wheel, tab switch — all reflected
+  // in posKey), discard it so Confirm can never commit it into the wrong position.
+  useEffect(() => {
+    setPending(null);
+  }, [posKey]);
+
   useEffect(() => () => shakeTimer.current && clearTimeout(shakeTimer.current), []);
 
   const triggerShake = useCallback(() => {

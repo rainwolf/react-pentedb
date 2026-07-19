@@ -19,7 +19,7 @@ import { Provider } from 'react-redux';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
-import docsReducer, { openTab, selectActivePosition } from '../../model/docSlice';
+import docsReducer, { openTab, navPrev, selectActivePosition } from '../../model/docSlice';
 import { createTree, addMove } from '../../model/gameTree';
 
 const boardMock = vi.hoisted(() => ({ lastProps: null }));
@@ -258,6 +258,24 @@ describe('BoardPane — interaction', () => {
 
     fireEvent.click(screen.getByLabelText('Confirm move'));
     expect(selectActivePosition(store.getState()).moves).toEqual([180, 220]);
+  });
+
+  test('a staged tap-confirm ghost is discarded when the position changes (nav)', () => {
+    const store = makeStore([180, 200, 220], [0, 0, 0]);
+    const before = store.getState().docs.tabs[0].tree.nextId;
+    renderWith(store, <BoardPane pointerCoarse />);
+
+    act(() => boardMock.lastProps.onMove(240)); // stage a ghost at the current position
+    expect(screen.getByLabelText('Confirm move')).toBeTruthy();
+
+    act(() => {
+      store.dispatch(navPrev()); // navigate away — the ghost belongs to the old position
+    });
+
+    // ghost cleared: no stale Confirm control, and nothing was committed to the tree.
+    expect(screen.queryByLabelText('Confirm move')).toBeNull();
+    expect(store.getState().docs.tabs[0].tree.nextId).toBe(before);
+    expect(selectActivePosition(store.getState()).moves).toEqual([180, 200]);
   });
 });
 
