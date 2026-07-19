@@ -11,7 +11,6 @@
 //
 // The api module is fully mocked (no real network), mirroring Workbench.test.js. Auth is
 // read through usePingQuery (UserMenu's own precedent), so the stub controls auth state.
-import React from 'react';
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';

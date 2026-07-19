@@ -29,6 +29,7 @@ import { useThemeModeContext } from './theme';
 import TopBar from './TopBar';
 import PanelTabs from './PanelTabs';
 import PanelSkeleton from './PanelSkeleton';
+import PanelError from './PanelError';
 import GameHeaderBar from '../features/viewer/GameHeaderBar';
 import NavControls from '../features/viewer/NavControls';
 import BoardPane from '../features/viewer/BoardPane';
@@ -360,6 +361,23 @@ export default function Workbench() {
   const handleActivate = (id) => dispatch(activateTab(id));
   const handleClose = (id) => dispatch(closeTab(id));
 
+  // Route-loader error surface (render-time only — no new effect/ref, just the same
+  // gameQuery/analysisQuery state the loader effect above already reads). A routed
+  // /g/:gid or /a/:aid whose query errors (404/401/etc.) never resolves a tab, so the
+  // loader effect's `if (!query.data) return;` guard leaves docs.tabs untouched — without
+  // this, that renders a permanently blank workbench with no feedback. Only surfaced when
+  // no tab already covers the routed key, so an error on a route that's already loaded
+  // (e.g. a stale refetch) doesn't blow away a working view.
+  const gameRouteError =
+    gid !== undefined && gidValid && gameQuery.isError && !docs.tabs.find((t) => t.id === gameTabId(gidNum))
+      ? gameQuery.error
+      : null;
+  const analysisRouteError =
+    aid !== undefined && aidValid && analysisQuery.isError && !docs.tabs.find((t) => t.id === `a:${aidNum}`)
+      ? analysisQuery.error
+      : null;
+  const routeLoadError = gameRouteError || analysisRouteError;
+
   // Center pane: tab strip, game header (captures/to-move), transport controls, the interactive
   // board, and the move strip. Each viewer piece reads the active position from docSlice itself.
   const centerColumn = (
@@ -381,6 +399,7 @@ export default function Workbench() {
           </Typography>
         )}
       </Box>
+      {routeLoadError && <PanelError error={routeLoadError} />}
       <GameHeaderBar />
       <NavControls />
       <BoardPane />

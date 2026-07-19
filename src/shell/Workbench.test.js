@@ -164,6 +164,50 @@ describe('routing -> docSlice', () => {
   });
 });
 
+describe('route-loader error states', () => {
+  // A routed /a/:aid or /g/:gid whose query 404s (or 401s, etc.) never resolves a tab —
+  // before this fix the loader effect's `if (!query.data) return;` guard just kept
+  // returning forever, leaving a permanently blank workbench with no feedback. Render-time
+  // only (no new effect/ref): the query's existing isError/error state is surfaced via the
+  // shared PanelError in the center pane, and the rest of the shell (Save button, tab
+  // strip) stays mounted and usable.
+  test('/a/999 shows the error envelope message instead of a blank workbench', async () => {
+    useAnalysisQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isSuccess: false,
+      isError: true,
+      error: { status: 404, data: { error: { message: 'Analysis not found' } } },
+    });
+
+    const store = makeStore();
+    renderWithMemoryRouter('/a/999', store);
+
+    expect((await screen.findByRole('alert')).textContent).toBe('Analysis not found');
+    // No tab was ever opened for the 404ing route — the loader correctly declined.
+    expect(store.getState().docs.tabs).toHaveLength(0);
+    // Rest of the shell stays usable (Save button/toolbar still renders).
+    expect(screen.getByLabelText('Save analysis')).toBeTruthy();
+  });
+
+  test('/g/999999 shows the error envelope message instead of a blank workbench', async () => {
+    useGameQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isSuccess: false,
+      isError: true,
+      error: { status: 404, data: { error: { message: 'Game not found' } } },
+    });
+
+    const store = makeStore();
+    renderWithMemoryRouter('/g/999999', store);
+
+    expect((await screen.findByRole('alert')).textContent).toBe('Game not found');
+    expect(store.getState().docs.tabs).toHaveLength(0);
+    expect(screen.getByLabelText('Save analysis')).toBeTruthy();
+  });
+});
+
 describe('tab strip', () => {
   test('activating and closing tabs updates docSlice state', async () => {
     const store = makeStore();

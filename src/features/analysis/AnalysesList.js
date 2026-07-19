@@ -32,6 +32,7 @@ import { usePingQuery, useAnalysesQuery, useAnalysisQuery, useDeleteAnalysisMuta
 import { openTab, activateTab } from '../../model/docSlice';
 import { fromWire } from '../../model/gameTree';
 import { variantKey } from '../../board/boardGeometry';
+import PanelError from '../../shell/PanelError';
 
 function updatedLabel(updated) {
   if (updated == null) return '';
@@ -44,7 +45,7 @@ export default function AnalysesList() {
   const tabs = useSelector((s) => s.docs.tabs);
   const { data: ping } = usePingQuery();
   const authName = ping?.auth ?? null;
-  const { data, isLoading, isError } = useAnalysesQuery(undefined, { skip: !authName });
+  const { data, isLoading, isError, error } = useAnalysesQuery(undefined, { skip: !authName });
   const [deleteAnalysis, { isLoading: deleting }] = useDeleteAnalysisMutation();
   const [confirm, setConfirm] = useState(null); // { aid, name } pending deletion
   const [openingAid, setOpeningAid] = useState(null); // aid whose tree is being fetched to open
@@ -112,11 +113,7 @@ export default function AnalysesList() {
           <CircularProgress size={18} />
         </Box>
       )}
-      {isError && (
-        <Typography variant="body2" color="error" sx={{ px: 2, py: 1 }}>
-          Could not load your analyses.
-        </Typography>
-      )}
+      <PanelError error={error} />
       {!isLoading && !isError && analyses.length === 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1 }}>
           No saved analyses yet.
