@@ -17,12 +17,15 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
 import RotateRightIcon from '@mui/icons-material/RotateRight';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 
 import Board from '../../board/Board';
 import { gridSizeForGame } from '../../board/boardGeometry';
 import { applyMove, navNext, navPrev, selectActivePosition } from '../../model/docSlice';
+import { selectAiThinking } from '../ai/aiSlice';
+import AiGhostOverlay from '../ai/AiGhostOverlay';
 import { buildBoardGame } from './boardGameFactory';
 import { symCell, symMoves, invSymCell, SYMMETRY_COUNT } from './boardSymmetry';
 import '../../resources/board.css';
@@ -41,6 +44,10 @@ function detectCoarse(override) {
 export default function BoardPane({ pointerCoarse } = {}) {
   const dispatch = useDispatch();
   const activePos = useSelector(selectActivePosition);
+  // While the AI is searching (a Hint or a play-vs-AI reply) the board is LOCKED: no placing,
+  // no wheel navigation — so the user cannot race the engine or apply its reply into a position
+  // it did not analyse. selectAiThinking is defensive about a store without the `ai` slice.
+  const aiThinking = useSelector(selectAiThinking);
 
   const [rotation, setRotation] = useState(0);
   const [pending, setPending] = useState(null); // canonical cell of a tap-confirm ghost, or null
@@ -88,7 +95,7 @@ export default function BoardPane({ pointerCoarse } = {}) {
   // string silently matches nothing and the rotation transform no-ops (the Phase-2 live defect).
   const handleMove = useCallback(
     (rawDisplayCell) => {
-      if (!activePos) return;
+      if (!activePos || aiThinking) return; // board locked while the engine searches
       const displayCell = Number(rawDisplayCell);
       if (Number.isNaN(displayCell)) return;
       const canonical = invSymCell(displayCell, rotation, gridSize);
@@ -102,17 +109,17 @@ export default function BoardPane({ pointerCoarse } = {}) {
       }
       dispatch(applyMove(canonical));
     },
-    [activePos, rotation, gridSize, coarse, boardGame, dispatch, triggerShake]
+    [activePos, aiThinking, rotation, gridSize, coarse, boardGame, dispatch, triggerShake]
   );
 
   const handleWheel = useCallback(
     (e) => {
-      if (!activePos) return;
+      if (!activePos || aiThinking) return; // no stepping while the engine searches
       if (typeof e.preventDefault === 'function') e.preventDefault();
       if (e.deltaY > 0) dispatch(navNext());
       else if (e.deltaY < 0) dispatch(navPrev());
     },
-    [activePos, dispatch]
+    [activePos, aiThinking, dispatch]
   );
 
   const confirmPending = () => {
@@ -162,10 +169,31 @@ export default function BoardPane({ pointerCoarse } = {}) {
         data-shake={shaking ? 'true' : 'false'}
         className={shaking ? 'board-shake' : undefined}
         onWheel={handleWheel}
-        sx={{ width: '100%', maxWidth: 640, aspectRatio: '1 / 1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        sx={{ position: 'relative', width: '100%', maxWidth: 640, aspectRatio: '1 / 1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
         {boardGame && activePos ? (
-          <Board game={boardGame} gameId={activePos.game} myTurn onMove={handleMove} />
+          <>
+            {/* myTurn gates the real Board's onMove: false during an AI search locks placement. */}
+            <Board game={boardGame} gameId={activePos.game} myTurn={!aiThinking} onMove={handleMove} />
+            {/* The AI's suggested move(s), mapped through the SAME view rotation as the board. */}
+            <AiGhostOverlay rotation={rotation} />
+            {aiThinking && (
+              <Box
+                data-testid="board-thinking"
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: 'rgba(0,0,0,0.04)',
+                  cursor: 'progress',
+                }}
+              >
+                <CircularProgress size={28} />
+              </Box>
+            )}
+          </>
         ) : (
           <Typography variant="body2" color="text.secondary">
             No document open

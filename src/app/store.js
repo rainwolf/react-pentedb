@@ -6,6 +6,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
 import docsReducer from '../model/docSlice';
 import uiReducer from './uiSlice';
+import aiReducer from '../features/ai/aiSlice';
 import { api } from './api';
 
 // The ui slice + its actions/selector live in ./uiSlice so they can be imported without
@@ -17,6 +18,7 @@ export const store = configureStore({
   reducer: {
     docs: docsReducer,
     ui: uiReducer,
+    ai: aiReducer,
     [api.reducerPath]: api.reducer,
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(api.middleware),
