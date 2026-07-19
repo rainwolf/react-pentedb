@@ -35,6 +35,12 @@ function defaultThreats() {
   };
 }
 
+// Frozen module-level fallback for selectThreatToggles below. A fresh defaultThreats() object
+// per call would give react-redux a new reference every render on stores without the ui slice,
+// tripping its unstable-selector-result warning (seen via ThreatBands). One frozen instance,
+// mirroring selectAiPlay's stable `initialState.play` fallback.
+const EMPTY_THREATS = Object.freeze(defaultThreats());
+
 const uiSlice = createSlice({
   name: 'ui',
   initialState: { scope: 'archive', rotation: 0, threats: defaultThreats() },
@@ -74,9 +80,10 @@ export function selectRotation(state) {
 }
 
 // Defensive: absent ui slice → the default grid, so ThreatBands has a sensible on-state even
-// on a store that never wired the ui reducer.
+// on a store that never wired the ui reducer. Returns the frozen EMPTY_THREATS singleton (not
+// a fresh object) so the fallback is referentially stable across renders.
 export function selectThreatToggles(state) {
-  return (state.ui && state.ui.threats) || defaultThreats();
+  return (state.ui && state.ui.threats) || EMPTY_THREATS;
 }
 
 // The EFFECTIVE scope every consumer must query with. mine/both require auth, so a lapsed

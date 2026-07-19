@@ -8,10 +8,11 @@
 // CANONICAL vs DISPLAY. Everything that leaves this panel toward the model is canonical: the
 // position-stats query uses the canonical line (selectActivePosition().moves, via the
 // debounce hook), and a row click dispatches applyMove(canonicalCell). The only place a view
-// rotation would apply is rendering candidate cells; HeatOverlay owns that transform. This
-// panel's own preview is unrotated (rotation 0) — the shared board's live rotation is local
-// to BoardPane; wiring the overlay onto that board (lifting its rotation to shared state) is
-// a Task 9 integration item. The rotation transform itself is exercised by HeatOverlay's unit
+// rotation would apply is rendering candidate cells; HeatOverlay owns that transform. Board
+// rotation now lives in shared ui state (selectRotation, P4 Task 4) rather than BoardPane-local
+// state, but this panel's own preview intentionally stays unrotated (rotation 0) — it is a
+// standalone mini-board, not a view onto the shared board, so it has no reason to track the
+// user's rotation preference. The rotation transform itself is exercised by HeatOverlay's unit
 // tests at rotation ≠ 0.
 import { useCallback, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';

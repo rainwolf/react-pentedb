@@ -56,7 +56,7 @@ const aiSlice = createSlice({
     },
     suggestionReceived(state, action) {
       state.status = 'idle';
-      state.suggestion = action.payload; // { game, cells }
+      state.suggestion = action.payload; // { game, cells, sig }
     },
     // A play-vs-AI reply was applied into the tree — clear the busy flag, leave no ghost.
     requestSettled(state) {

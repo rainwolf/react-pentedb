@@ -7,8 +7,9 @@
 //                           (so ThreatsPanel can explain it). See the gate rationale below.
 //   - shownThreats(...)     the engine threats that pass BOTH the shown-category filter and the
 //                           per-player toggle grid — the exact set ThreatBands paints.
-//   - useThreatAnalysis()   memoized per-position analysis for the components (one engine run,
-//                           one board build, shared by the panel and the bands).
+//   - useThreatAnalysis()   memoized per-position analysis (one engine run, one board build),
+//                           keyed on posKey; the panel and the bands each call it independently
+//                           and recompute is <1ms, so there's no need to share a single result.
 //
 // GATE RATIONALE (capture-alternation safety): the engine assumes strict P1,P2,P1,P2… move
 // alternation — analyzeMove() filters the move history with `getPosition(m) === (i % 2) + 1`,
