@@ -78,13 +78,20 @@ export function canonicalUrl(tab, pos) {
   return `/p/${pos.game}/${pos.moves.join('-')}`;
 }
 
-function buildTreeFromMoves(moves) {
+export function buildTreeFromMoves(moves) {
   let tree = createTree();
   let path = [];
   for (const m of moves) {
     ({ tree, path } = addMove(tree, path, m));
   }
   return { tree, path };
+}
+
+// The docSlice tab id convention for a loaded game — shared with ResultsList's row-click
+// "open at final position" handler so a search result and the /g/:gid route always
+// resolve to the SAME tab instead of racing to open a duplicate.
+export function gameTabId(gid) {
+  return `g:${gid}`;
 }
 
 export default function Workbench() {
@@ -166,7 +173,7 @@ export default function Workbench() {
         navigate('/', { replace: true });
         return;
       }
-      const key = `g:${gidNum}`;
+      const key = gameTabId(gidNum);
       if (loadedRouteKeyRef.current === key) return;
       const existing = docs.tabs.find((t) => t.id === key);
       if (existing) {

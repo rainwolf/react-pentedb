@@ -28,6 +28,11 @@ vi.mock('../board/Board', () => ({
 vi.mock('../app/api', () => ({
   useGameQuery: vi.fn(() => ({ data: undefined, isLoading: true, isSuccess: false })),
   useAnalysisQuery: vi.fn(() => ({ data: undefined, isLoading: true, isSuccess: false })),
+  // The wide-breakpoint layout renders the real (Task 7) SearchPanel in the left pane —
+  // stub its hooks too so that path doesn't crash on an unmocked import.
+  useGamesSearchQuery: vi.fn(() => ({ data: { total: 0, games: [] }, isFetching: false })),
+  useVenuesQuery: vi.fn(() => ({ data: { variants: [] }, isLoading: false })),
+  usePlayersQuery: vi.fn(() => ({ data: { players: [] }, isFetching: false })),
 }));
 
 // eslint-disable-next-line import/first
