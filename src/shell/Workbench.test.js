@@ -38,6 +38,12 @@ vi.mock('../app/api', () => ({
   // The wide/medium layout's right panel defaults to the real (Task 8) ExplorerPanel —
   // stub its position-stats hook for the same reason.
   usePositionStatsQuery: vi.fn(() => ({ data: undefined, isFetching: false })),
+  // The (P3 Task 3) save flow + "My analyses" panel: useAnalysisSave and AnalysesList call
+  // these; stub them so the shell mounts. Saved-analyses behavior is covered in
+  // features/analysis/persistence.test.js, not here.
+  useSaveAnalysisMutation: vi.fn(() => [vi.fn(() => ({ unwrap: () => Promise.resolve({}) })), { isLoading: false }]),
+  useAnalysesQuery: vi.fn(() => ({ data: { analyses: [] }, isLoading: false, isError: false })),
+  useDeleteAnalysisMutation: vi.fn(() => [vi.fn(() => ({ unwrap: () => Promise.resolve({ ok: true }) })), { isLoading: false }]),
 }));
 
 // eslint-disable-next-line import/first

@@ -201,9 +201,29 @@ const docSlice = createSlice({
       t.dirty = true;
     },
 
-    markSaved(state) {
-      const t = activeTab(state);
-      if (t) t.dirty = false;
+    // Mark the active tab persisted. Optional payload { aid, name } lets a first server
+    // save adopt the server id: a scratch/analysis tab with no aid yet is re-keyed to the
+    // canonical `a:<aid>` id and promoted to kind 'analysis', so the /a/:aid route loader
+    // recognizes it (activates instead of opening a duplicate) and canonicalUrl addresses
+    // it as /a/<aid>. Later saves (aid already present) just clear dirty / update the title.
+    markSaved: {
+      reducer(state, action) {
+        const t = activeTab(state);
+        if (!t) return;
+        t.dirty = false;
+        const { aid, name } = action.payload || {};
+        if (name != null) t.title = name;
+        if (aid != null && t.aid == null) {
+          t.aid = aid;
+          t.kind = 'analysis';
+          const newId = `a:${aid}`;
+          if (state.activeTabId === t.id) state.activeTabId = newId;
+          t.id = newId;
+        }
+      },
+      prepare(payload = {}) {
+        return { payload };
+      },
     },
   },
 });

@@ -3,12 +3,15 @@
 // (see app/router.js); it reads whichever params matched and opens/activates the
 // corresponding docSlice tab.
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch, useSelector, useStore } from 'react-redux';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
+import Typography from '@mui/material/Typography';
+import SaveIcon from '@mui/icons-material/Save';
 
 import { useGameQuery, useAnalysisQuery } from '../app/api';
 import {
@@ -30,9 +33,14 @@ import NavControls from '../features/viewer/NavControls';
 import BoardPane from '../features/viewer/BoardPane';
 import MoveStrip from '../features/viewer/MoveStrip';
 import useKeyboardNav from '../features/viewer/useKeyboardNav';
+import useSaveShortcut from '../features/analysis/useSaveShortcut';
+import useAnalysisSave from '../features/analysis/useAnalysisSave';
+import SaveDialog, { LoginPromptDialog, RecoveryDialog } from '../features/analysis/SaveDialog';
+import { writeRecovery, clearRecovery, readAllRecovery } from '../features/analysis/recovery';
 
 const ExplorerPanel = React.lazy(() => import('../features/explorer/ExplorerPanel'));
 const SearchPanel = React.lazy(() => import('../features/search/SearchPanel'));
+const AnalysesList = React.lazy(() => import('../features/analysis/AnalysesList'));
 const AnalysisPanel = React.lazy(() => import('../features/analysis/AnalysisPanel'));
 const AiPanel = React.lazy(() => import('../features/ai/AiPanel'));
 const ThreatsPanel = React.lazy(() => import('../features/threats/ThreatsPanel'));
@@ -105,6 +113,7 @@ export default function Workbench() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [rightTab, setRightTab] = useState('explorer');
   const [mobileTab, setMobileTab] = useState('explorer');
+  const [leftTab, setLeftTab] = useState('search');
 
   // ←/→/Home/End/↑/↓ step the active tab's cursor (spec §9); dispatches flow through the same
   // activePos -> URL-sync path as the NavControls buttons.
@@ -112,6 +121,51 @@ export default function Workbench() {
 
   const docs = useSelector((s) => s.docs);
   const activeTab = docs.tabs.find((t) => t.id === docs.activeTabId) || null;
+
+  // --- Save / recovery (P3 Task 3) ----------------------------------------------
+  // useAnalysisSave owns the whole save flow (name dialog vs anonymous login prompt, POST
+  // vs PUT, tab re-key); we just wire Ctrl/Cmd+S and the toolbar button to requestSave and
+  // render the dialogs it drives.
+  const { canSave, requestSave, saveDialog, loginPrompt } = useAnalysisSave();
+  useSaveShortcut(requestSave);
+
+  // Snapshot every dirty analysis/scratch tab on unload so a reload (or a bounce through
+  // login) never loses in-progress work; offered back via the restore dialog next visit.
+  // Reads the store directly at unload time (not a render-synced ref) so a dispatch that
+  // lands between the last render and the unload is still captured.
+  const reduxStore = useStore();
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      for (const t of reduxStore.getState().docs.tabs) {
+        if (t.dirty && (t.kind === 'analysis' || t.kind === 'scratch')) writeRecovery(t);
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [reduxStore]);
+
+  // Read once on mount: any snapshots left by a previous visit are offered for restore.
+  const [recoveries, setRecoveries] = useState(() => readAllRecovery());
+  const dismissRecovery = () => {
+    recoveries.forEach((r) => clearRecovery(r.id));
+    setRecoveries([]);
+  };
+  const restoreRecovery = () => {
+    recoveries.forEach((r) => {
+      dispatch(
+        openTab({
+          id: r.id,
+          kind: r.aid != null ? 'analysis' : 'scratch',
+          title: r.name,
+          game: r.game,
+          aid: r.aid != null ? r.aid : undefined,
+          tree: fromWire(r.tree),
+        })
+      );
+      clearRecovery(r.id);
+    });
+    setRecoveries([]);
+  };
 
   const rawActivePos = useSelector(selectActivePosition);
   // selectActivePosition builds fresh array/object literals every call; memoize on
@@ -307,6 +361,22 @@ export default function Workbench() {
   const centerColumn = (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
       <PanelTabs tabs={docs.tabs} activeTabId={docs.activeTabId} onActivate={handleActivate} onClose={handleClose} />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.5, borderBottom: 1, borderColor: 'divider' }}>
+        <Button
+          size="small"
+          startIcon={<SaveIcon fontSize="small" />}
+          onClick={requestSave}
+          disabled={!canSave}
+          aria-label="Save analysis"
+        >
+          Save
+        </Button>
+        {activeTab && activeTab.dirty && (
+          <Typography variant="caption" color="warning.main">
+            Unsaved changes
+          </Typography>
+        )}
+      </Box>
       <GameHeaderBar />
       <NavControls />
       <BoardPane />
@@ -314,11 +384,26 @@ export default function Workbench() {
     </Box>
   );
 
+  // Left-panel body: Search or the signed-in user's saved analyses (P3 Task 3). Shared by
+  // the wide left rail and the medium drawer so both offer the same two tabs.
+  const leftPanelBody = (
+    <>
+      <Tabs value={leftTab} onChange={(e, v) => setLeftTab(v)} variant="fullWidth">
+        <Tab value="search" label="Search" />
+        <Tab value="mine" label="My analyses" />
+      </Tabs>
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
+        <Suspense fallback={<PanelSkeleton />}>
+          {leftTab === 'search' && <SearchPanel />}
+          {leftTab === 'mine' && <AnalysesList />}
+        </Suspense>
+      </Box>
+    </>
+  );
+
   const leftPanel = (
-    <Box sx={{ width: 280, flexShrink: 0, borderRight: 1, borderColor: 'divider', overflow: 'auto' }}>
-      <Suspense fallback={<PanelSkeleton />}>
-        <SearchPanel />
-      </Suspense>
+    <Box sx={{ width: 280, flexShrink: 0, borderRight: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column' }}>
+      {leftPanelBody}
     </Box>
   );
 
@@ -351,10 +436,8 @@ export default function Workbench() {
         {bp === 'wide' && leftPanel}
         {bp === 'medium' && (
           <Drawer anchor="left" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
-            <Box sx={{ width: 280 }}>
-              <Suspense fallback={<PanelSkeleton />}>
-                <SearchPanel />
-              </Suspense>
+            <Box sx={{ width: 280, display: 'flex', flexDirection: 'column', height: '100%' }}>
+              {leftPanelBody}
             </Box>
           </Drawer>
         )}
@@ -367,6 +450,7 @@ export default function Workbench() {
             <Tab value="explorer" label="Explorer" />
             <Tab value="games" label="Games" />
             <Tab value="analysis" label="Analysis" />
+            <Tab value="saved" label="Saved" />
             <Tab value="ai" label="AI" />
           </Tabs>
           <Box sx={{ maxHeight: 240, overflow: 'auto' }}>
@@ -374,11 +458,21 @@ export default function Workbench() {
               {mobileTab === 'explorer' && <ExplorerPanel />}
               {mobileTab === 'games' && <SearchPanel />}
               {mobileTab === 'analysis' && <AnalysisPanel />}
+              {mobileTab === 'saved' && <AnalysesList />}
               {mobileTab === 'ai' && <AiPanel />}
             </Suspense>
           </Box>
         </Box>
       )}
+
+      <SaveDialog {...saveDialog} />
+      <LoginPromptDialog {...loginPrompt} />
+      <RecoveryDialog
+        open={recoveries.length > 0}
+        entries={recoveries}
+        onRestore={restoreRecovery}
+        onDismiss={dismissRecovery}
+      />
     </Box>
   );
 }
