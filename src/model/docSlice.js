@@ -225,6 +225,31 @@ const docSlice = createSlice({
         return { payload };
       },
     },
+
+    // Restore a recovery snapshot into a tab. Idempotent on tab id (unlike openTab, which
+    // always pushes): if a tab with this id already exists — e.g. the '/' default scratch
+    // tab (auto-id 'tab1') or the /a/:aid tab a dirty-reload just re-opened — REPLACE its
+    // tree/cursor/metadata with the recovered (unsaved) copy and activate it, instead of
+    // pushing a duplicate id. Recovered work is unsaved, so the tab is left dirty.
+    restoreTab: {
+      reducer(state, action) {
+        const p = action.payload;
+        const existing = state.tabs.find((t) => t.id === p.id);
+        const target = existing || { id: p.id, gid: p.gid };
+        target.kind = p.kind || 'scratch';
+        target.title = p.title || '';
+        target.game = p.game;
+        target.aid = p.aid;
+        target.tree = p.tree || createTree();
+        target.cursorPath = [];
+        target.dirty = true;
+        if (!existing) state.tabs.push(target);
+        state.activeTabId = target.id;
+      },
+      prepare(payload = {}) {
+        return { payload };
+      },
+    },
   },
 });
 
@@ -246,6 +271,7 @@ export const {
   promoteVariation,
   deleteBranch,
   markSaved,
+  restoreTab,
 } = docSlice.actions;
 
 const selectDocsTabs = (state) => state.docs.tabs;

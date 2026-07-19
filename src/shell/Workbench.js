@@ -18,6 +18,7 @@ import {
   openTab,
   activateTab,
   closeTab,
+  restoreTab,
   selectActivePosition,
 } from '../model/docSlice';
 import { createTree, addMove, fromWire } from '../model/gameTree';
@@ -152,8 +153,11 @@ export default function Workbench() {
   };
   const restoreRecovery = () => {
     recoveries.forEach((r) => {
+      // restoreTab is idempotent on id: it replaces an existing tab (the '/' default
+      // scratch tab or a dirty-reloaded /a/:aid tab share the recovery's id) instead of
+      // pushing a duplicate. See docSlice.restoreTab.
       dispatch(
-        openTab({
+        restoreTab({
           id: r.id,
           kind: r.aid != null ? 'analysis' : 'scratch',
           title: r.name,

@@ -349,3 +349,40 @@ describe('Workbench save flow', () => {
     expect(readAllRecovery()).toHaveLength(0);
   });
 });
+
+describe('recovery restore dedup (no duplicate tabs)', () => {
+  test('id collision with the default scratch tab yields ONE tab holding the recovered tree', async () => {
+    // The default '/' scratch tab is auto-id 'tab1'; a recovery snapshot from a previous
+    // session shares that id. Restore must REPLACE, not push a second 'tab1'.
+    writeRecovery({ id: 'tab1', title: 'Recovered', game: 1, aid: null, tree: treeWith([180, 199]) });
+    const store = makeStore();
+    renderAt('/', store);
+    await waitFor(() => expect(store.getState().docs.tabs.some((t) => t.id === 'tab1')).toBe(true));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+    await waitFor(() => {
+      const t1 = store.getState().docs.tabs.filter((t) => t.id === 'tab1');
+      expect(t1).toHaveLength(1);
+      expect(mainline(t1[0].tree)).toEqual([180, 199]);
+    });
+    expect(store.getState().docs.tabs).toHaveLength(1);
+    expect(store.getState().docs.activeTabId).toBe('tab1');
+    expect(readAllRecovery()).toHaveLength(0);
+  });
+
+  test('id collision with a dirty /a/:aid tab yields ONE tab with the recovered tree', async () => {
+    // Reloading at /a/42 loads the SAVED tree; the recovery holds the dirtier unsaved line.
+    useAnalysisQuery.mockReturnValue({ data: { aid: 42, name: 'Saved', game: 1, tree: toWire(treeWith([180])) } });
+    writeRecovery({ id: 'a:42', title: 'Saved', game: 1, aid: 42, tree: treeWith([180, 199, 210]) });
+    const store = makeStore();
+    renderAt('/a/42', store);
+    await waitFor(() => expect(store.getState().docs.tabs.some((t) => t.id === 'a:42')).toBe(true));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+    await waitFor(() => {
+      const t = store.getState().docs.tabs.filter((t) => t.id === 'a:42');
+      expect(t).toHaveLength(1);
+      expect(mainline(t[0].tree)).toEqual([180, 199, 210]);
+    });
+    expect(store.getState().docs.tabs.filter((t) => t.id === 'a:42')).toHaveLength(1);
+    expect(readAllRecovery()).toHaveLength(0);
+  });
+});
