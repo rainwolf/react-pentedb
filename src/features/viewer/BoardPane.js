@@ -24,10 +24,12 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import Board from '../../board/Board';
 import { gridSizeForGame } from '../../board/boardGeometry';
 import { applyMove, navNext, navPrev, selectActivePosition } from '../../model/docSlice';
+import { setRotation, selectRotation } from '../../app/uiSlice';
 import { selectAiThinking } from '../ai/aiSlice';
 import AiGhostOverlay from '../ai/AiGhostOverlay';
+import ThreatBands from '../threats/ThreatBands';
 import { buildBoardGame } from './boardGameFactory';
-import { symCell, symMoves, invSymCell, SYMMETRY_COUNT } from './boardSymmetry';
+import { symCell, symMoves, invSymCell } from './boardSymmetry';
 import '../../resources/board.css';
 
 const SHAKE_MS = 300;
@@ -48,8 +50,12 @@ export default function BoardPane({ pointerCoarse } = {}) {
   // no wheel navigation — so the user cannot race the engine or apply its reply into a position
   // it did not analyse. selectAiThinking is defensive about a store without the `ai` slice.
   const aiThinking = useSelector(selectAiThinking);
+  // Board view orientation is SHARED state (ui slice), not component-local: the threat bands,
+  // the AI ghost and (later) the heat ghost are all overlays on this same board and must
+  // transform through the same rotation. BoardPane owns the control; every overlay reads the
+  // same selectRotation value.
+  const rotation = useSelector(selectRotation);
 
-  const [rotation, setRotation] = useState(0);
   const [pending, setPending] = useState(null); // canonical cell of a tap-confirm ghost, or null
   const [shaking, setShaking] = useState(false);
   const shakeTimer = useRef(null);
@@ -138,7 +144,7 @@ export default function BoardPane({ pointerCoarse } = {}) {
           title="Rotate board"
           aria-label="Rotate board"
           disabled={!activePos}
-          onClick={() => setRotation((r) => (r + 1) % SYMMETRY_COUNT)}
+          onClick={() => dispatch(setRotation(rotation + 1))}
         >
           <RotateRightIcon fontSize="small" />
         </IconButton>
@@ -147,7 +153,7 @@ export default function BoardPane({ pointerCoarse } = {}) {
             size="small"
             title="Reset board orientation"
             aria-label="Reset board orientation"
-            onClick={() => setRotation(0)}
+            onClick={() => dispatch(setRotation(0))}
           >
             <RestartAltIcon fontSize="small" />
           </IconButton>
@@ -177,6 +183,8 @@ export default function BoardPane({ pointerCoarse } = {}) {
             <Board game={boardGame} gameId={activePos.game} myTurn={!aiThinking} onMove={handleMove} />
             {/* The AI's suggested move(s), mapped through the SAME view rotation as the board. */}
             <AiGhostOverlay rotation={rotation} />
+            {/* Threat bands — same shared rotation, so bands track the board on every rotate. */}
+            <ThreatBands rotation={rotation} />
             {aiThinking && (
               <Box
                 data-testid="board-thinking"

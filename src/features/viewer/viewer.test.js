@@ -22,6 +22,7 @@ import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import docsReducer, { openTab, navPrev, selectActivePosition } from '../../model/docSlice';
+import uiReducer from '../../app/uiSlice';
 import { createTree, addMove } from '../../model/gameTree';
 
 const boardMock = vi.hoisted(() => ({ lastProps: null }));
@@ -87,7 +88,7 @@ function treeFromLine(moves) {
 }
 
 function makeStore(moves, cursorPath, game = 1, branches = []) {
-  const store = configureStore({ reducer: { docs: docsReducer } });
+  const store = configureStore({ reducer: { docs: docsReducer, ui: uiReducer } });
   let { tree } = treeFromLine(moves);
   for (const b of branches) {
     tree = addMove(tree, b.at, b.move).tree;

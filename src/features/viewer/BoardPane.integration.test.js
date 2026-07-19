@@ -10,6 +10,7 @@ import { render, fireEvent, act, cleanup, screen } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import docsReducer, { openTab, selectActivePosition } from '../../model/docSlice';
+import uiReducer from '../../app/uiSlice';
 import { createTree, addMove } from '../../model/gameTree';
 import { invSymCell } from './boardSymmetry';
 import BoardPane from './BoardPane';
@@ -29,7 +30,7 @@ function treeFromLine(moves) {
 }
 
 function makeStore(moves, cursorPath, game = 1) {
-  const store = configureStore({ reducer: { docs: docsReducer } });
+  const store = configureStore({ reducer: { docs: docsReducer, ui: uiReducer } });
   const { tree } = treeFromLine(moves);
   store.dispatch(openTab({ id: 't', kind: 'scratch', title: 'T', game, tree, cursorPath }));
   return store;
