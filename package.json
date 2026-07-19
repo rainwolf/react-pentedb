@@ -19,7 +19,8 @@
     "build": "rsbuild build",
     "preview": "rsbuild preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:engine": "node scripts/ai-smoke.mjs"
   },
   "eslintConfig": {
     "extends": "react-app"
