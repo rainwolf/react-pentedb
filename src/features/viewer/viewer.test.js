@@ -12,6 +12,9 @@
 // viewer's OWN interaction/nav logic. The stub captures the props <Board> was rendered with
 // (crucially `onMove`) so we can drive move callbacks the real board would only fire for
 // legal empty cells — including the occupied-cell path the real board never fires.
+// Contract fidelity: the real BoardSquare calls onMove with `e.target.id` — a STRING flat-index
+// (quotes stripped) — so these drivers pass STRINGS, not numbers. See BoardPane.integration.test.js
+// for the full real-Board wiring; this keeps the stubbed drivers honest to that contract.
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';
@@ -205,7 +208,7 @@ describe('BoardPane — interaction', () => {
     const store = makeStore([180], [0]);
     renderWith(store, <BoardPane />);
 
-    act(() => boardMock.lastProps.onMove(200)); // 200 is empty
+    act(() => boardMock.lastProps.onMove('200')); // 200 is empty (Board fires a string id)
     expect(selectActivePosition(store.getState()).moves).toEqual([180, 200]);
   });
 
@@ -214,7 +217,7 @@ describe('BoardPane — interaction', () => {
     const before = store.getState().docs.tabs[0].tree.nextId;
     renderWith(store, <BoardPane />);
 
-    act(() => boardMock.lastProps.onMove(180)); // 180 is occupied
+    act(() => boardMock.lastProps.onMove('180')); // 180 is occupied (Board fires a string id)
     expect(store.getState().docs.tabs[0].tree.nextId).toBe(before);
     expect(selectActivePosition(store.getState()).moves).toEqual([180]);
     expect(screen.getByTestId('board-pane').getAttribute('data-shake')).toBe('true');
@@ -238,7 +241,7 @@ describe('BoardPane — interaction', () => {
 
     fireEvent.click(screen.getByLabelText('Rotate board')); // rotation -> 1
     const displayCell = 200;
-    act(() => boardMock.lastProps.onMove(displayCell));
+    act(() => boardMock.lastProps.onMove(String(displayCell))); // Board fires a string id
 
     const expectedCanonical = invSymCell(displayCell, 1, N);
     expect(selectActivePosition(store.getState()).moves).toEqual([180, expectedCanonical]);
@@ -249,10 +252,10 @@ describe('BoardPane — interaction', () => {
     const before = store.getState().docs.tabs[0].tree.nextId;
     renderWith(store, <BoardPane pointerCoarse />);
 
-    act(() => boardMock.lastProps.onMove(200)); // pending, not committed
+    act(() => boardMock.lastProps.onMove('200')); // pending, not committed (string id)
     expect(store.getState().docs.tabs[0].tree.nextId).toBe(before);
 
-    act(() => boardMock.lastProps.onMove(220)); // move the pending ghost, still not committed
+    act(() => boardMock.lastProps.onMove('220')); // move the pending ghost, still not committed
     expect(store.getState().docs.tabs[0].tree.nextId).toBe(before);
 
     fireEvent.click(screen.getByLabelText('Confirm move'));
@@ -264,7 +267,7 @@ describe('BoardPane — interaction', () => {
     const before = store.getState().docs.tabs[0].tree.nextId;
     renderWith(store, <BoardPane pointerCoarse />);
 
-    act(() => boardMock.lastProps.onMove(240)); // stage a ghost at the current position
+    act(() => boardMock.lastProps.onMove('240')); // stage a ghost at the current position (string id)
     expect(screen.getByLabelText('Confirm move')).toBeTruthy();
 
     act(() => {

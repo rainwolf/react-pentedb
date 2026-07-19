@@ -83,9 +83,14 @@ export default function BoardPane({ pointerCoarse } = {}) {
   }, []);
 
   // Board hands us a DISPLAY cell; map it back to the stored orientation before touching the tree.
+  // The REAL <Board> passes `e.target.id` — a STRING flat-index (quotes stripped). Coerce to a
+  // number FIRST: invSymCell compares candidates against numeric symCell() outputs with ===, so a
+  // string silently matches nothing and the rotation transform no-ops (the Phase-2 live defect).
   const handleMove = useCallback(
-    (displayCell) => {
+    (rawDisplayCell) => {
       if (!activePos) return;
+      const displayCell = Number(rawDisplayCell);
+      if (Number.isNaN(displayCell)) return;
       const canonical = invSymCell(displayCell, rotation, gridSize);
       if (coarse) {
         setPending(canonical); // tap-confirm: stage, don't commit
