@@ -1,32 +1,32 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { Provider } from 'react-redux';
 import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import BoardStory from './board/BoardStory';
+import { ThemeProvider } from '@mui/material/styles';
+import { BrowserRouter } from 'react-router-dom';
+import { store } from './app/store';
+import AppRoutes from './app/router';
+import { ThemeModeProvider, useThemeModeContext, getTheme } from './shell/theme';
 
-const theme = createTheme();
-
-// /board-story is temporary scaffolding for P2 Task 2 Step 4 (render smoke
-// test) — left in place per the task brief as scaffolding for later tasks
-// to replace, not a permanent app route.
-function App() {
+function ThemedShell() {
+  const [mode] = useThemeModeContext();
+  const theme = useMemo(() => getTheme(mode), [mode]);
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div className="App">
-                <h1>pentedb</h1>
-              </div>
-            }
-          />
-          <Route path="/board-story" element={<BoardStory />} />
-        </Routes>
+        <AppRoutes />
       </BrowserRouter>
     </ThemeProvider>
+  );
+}
+
+function App() {
+  return (
+    <Provider store={store}>
+      <ThemeModeProvider>
+        <ThemedShell />
+      </ThemeModeProvider>
+    </Provider>
   );
 }
 
