@@ -139,6 +139,7 @@ export default function ResultsList({ game, scope, filters, moves }) {
             return (
               <Box
                 key={h.gid}
+                data-testid={`result-row-${h.gid}`}
                 onClick={() => handleRowClick(h)}
                 sx={{
                   position: 'absolute',

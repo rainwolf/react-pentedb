@@ -10,6 +10,16 @@
 # testing
 /coverage
 
+# playwright e2e
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache
+/e2e/.auth
+/e2e/.tmp
+# local, uncommitted credential-sourcing runner (see report / package.json test:e2e comment)
+/e2e/run-local.sh
+
 # production
 /build
 

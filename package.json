@@ -20,7 +20,8 @@
     "preview": "rsbuild preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:engine": "node scripts/ai-smoke.mjs"
+    "test:engine": "node scripts/ai-smoke.mjs",
+    "test:e2e": "playwright test"
   },
   "eslintConfig": {
     "extends": "react-app"
@@ -32,6 +33,7 @@
     "not op_mini all"
   ],
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@rsbuild/core": "^1.7.4",
     "@rsbuild/plugin-react": "^1.4.6",
     "@testing-library/react": "^16.3.2",
