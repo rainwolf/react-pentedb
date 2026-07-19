@@ -7,32 +7,17 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Drawer from '@mui/material/Drawer';
-import IconButton from '@mui/material/IconButton';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
-import Chip from '@mui/material/Chip';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import FirstPageIcon from '@mui/icons-material/FirstPage';
-import LastPageIcon from '@mui/icons-material/LastPage';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 
 import { useGameQuery, useAnalysisQuery } from '../app/api';
 import {
   openTab,
   activateTab,
   closeTab,
-  navFirst,
-  navPrev,
-  navNext,
-  navLast,
-  navTo,
   selectActivePosition,
 } from '../model/docSlice';
 import { createTree, addMove, fromWire } from '../model/gameTree';
-import { Game, GameState } from '../game/GameClass';
-import Board from '../board/Board';
 import '../resources/board.css';
 
 import { useBreakpoint } from './responsive';
@@ -40,6 +25,11 @@ import { useThemeModeContext } from './theme';
 import TopBar from './TopBar';
 import PanelTabs from './PanelTabs';
 import PanelSkeleton from './PanelSkeleton';
+import GameHeaderBar from '../features/viewer/GameHeaderBar';
+import NavControls from '../features/viewer/NavControls';
+import BoardPane from '../features/viewer/BoardPane';
+import MoveStrip from '../features/viewer/MoveStrip';
+import useKeyboardNav from '../features/viewer/useKeyboardNav';
 
 const ExplorerPanel = React.lazy(() => import('../features/explorer/ExplorerPanel'));
 const SearchPanel = React.lazy(() => import('../features/search/SearchPanel'));
@@ -108,6 +98,10 @@ export default function Workbench() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [rightTab, setRightTab] = useState('explorer');
   const [mobileTab, setMobileTab] = useState('explorer');
+
+  // ←/→/Home/End/↑/↓ step the active tab's cursor (spec §9); dispatches flow through the same
+  // activePos -> URL-sync path as the NavControls buttons.
+  useKeyboardNav();
 
   const docs = useSelector((s) => s.docs);
   const activeTab = docs.tabs.find((t) => t.id === docs.activeTabId) || null;
@@ -298,61 +292,18 @@ export default function Workbench() {
     lastSyncedUrlRef.current = url;
   }, [activeTab, activePos, location.pathname, navigate]);
 
-  // --- Board (read-only) ----------------------------------------------------------
-  const boardGame = useMemo(() => {
-    if (!activePos) return null;
-    const g = new Game();
-    g.setGame(activePos.game);
-    g.gameState = { ...g.gameState, state: GameState.State.STARTED };
-    activePos.moves.forEach((m) => g.addMove(m));
-    return g;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePos]);
-
   const handleActivate = (id) => dispatch(activateTab(id));
   const handleClose = (id) => dispatch(closeTab(id));
 
+  // Center pane: tab strip, game header (captures/to-move), transport controls, the interactive
+  // board, and the move strip. Each viewer piece reads the active position from docSlice itself.
   const centerColumn = (
     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
       <PanelTabs tabs={docs.tabs} activeTabId={docs.activeTabId} onActivate={handleActivate} onClose={handleClose} />
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5 }}>
-        <IconButton size="small" aria-label="First move" disabled={!activeTab} onClick={() => dispatch(navFirst())}>
-          <FirstPageIcon fontSize="small" />
-        </IconButton>
-        <IconButton size="small" aria-label="Previous move" disabled={!activeTab} onClick={() => dispatch(navPrev())}>
-          <ArrowBackIcon fontSize="small" />
-        </IconButton>
-        <IconButton size="small" aria-label="Next move" disabled={!activeTab} onClick={() => dispatch(navNext())}>
-          <ArrowForwardIcon fontSize="small" />
-        </IconButton>
-        <IconButton size="small" aria-label="Last move" disabled={!activeTab} onClick={() => dispatch(navLast())}>
-          <LastPageIcon fontSize="small" />
-        </IconButton>
-      </Box>
-      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0, p: 2 }}>
-        {boardGame && activePos ? (
-          <Box sx={{ width: '100%', maxWidth: 640, aspectRatio: '1 / 1' }}>
-            <Board game={boardGame} gameId={activePos.game} myTurn={false} />
-          </Box>
-        ) : (
-          <Typography variant="body2" color="text.secondary">
-            No document open
-          </Typography>
-        )}
-      </Box>
-      {activePos && activePos.moves.length > 0 && (
-        <Stack direction="row" spacing={0.5} sx={{ px: 1, py: 0.5, overflowX: 'auto' }}>
-          {activePos.moves.map((m, i) => (
-            <Chip
-              key={i}
-              label={m}
-              size="small"
-              color={i === activePos.cursorPath.length - 1 ? 'primary' : 'default'}
-              onClick={() => dispatch(navTo(activePos.cursorPath.slice(0, i + 1)))}
-            />
-          ))}
-        </Stack>
-      )}
+      <GameHeaderBar />
+      <NavControls />
+      <BoardPane />
+      <MoveStrip />
     </Box>
   );
 
