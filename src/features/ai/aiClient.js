@@ -40,6 +40,27 @@ export function createAiClient(workerFactory) {
   let seq = 0;
   const pending = new Map(); // id -> { resolve, reject, game }
 
+  // Tear the worker down completely. A crashed/aborted engine can't recover in place
+  // (re-importing the emscripten glue reuses the already-run global Module), so recovery
+  // is always "throw the worker away"; the NEXT ensureWorker() spawns a fresh one whose
+  // module scope starts with enginePromise === null.
+  function disposeWorker() {
+    if (!worker) return;
+    worker.onmessage = null;
+    worker.onerror = null;
+    try {
+      worker.terminate();
+    } catch {
+      /* terminate is best-effort */
+    }
+    worker = null;
+  }
+
+  function rejectAll(err) {
+    for (const entry of pending.values()) entry.reject(err);
+    pending.clear();
+  }
+
   function handleMessage(event) {
     const data = event && event.data;
     if (!data || typeof data.id !== 'number') return;
@@ -48,7 +69,16 @@ export function createAiClient(workerFactory) {
     pending.delete(data.id);
 
     if (data.type === 'error') {
-      entry.reject(new Error(data.message || 'AI engine error'));
+      // An engine ccall threw — the wasm Module may be aborted/corrupt, and every later
+      // call on it would keep failing. Tear the worker down so the next requestMove
+      // re-inits a fresh engine, then reject this request and any others bound to it.
+      const err = new Error(data.message || 'AI engine error');
+      err.engineError = true;
+      disposeWorker();
+      entry.reject(err);
+      const crash = new Error('AI worker reset after engine error');
+      crash.workerCrashed = true;
+      rejectAll(crash);
       return;
     }
     if (data.type !== 'result') return;
@@ -66,9 +96,13 @@ export function createAiClient(workerFactory) {
   }
 
   function handleError() {
+    // Worker-level crash (uncaught error / failed script load). Null the worker so the
+    // next requestMove respawns — reusing the dead instance would hang forever (its
+    // reply never comes). Rejections are tagged err.workerCrashed for callers.
+    disposeWorker();
     const err = new Error('AI worker crashed');
-    for (const entry of pending.values()) entry.reject(err);
-    pending.clear();
+    err.workerCrashed = true;
+    rejectAll(err);
   }
 
   function ensureWorker() {
@@ -98,16 +132,14 @@ export function createAiClient(workerFactory) {
   /**
    * Abort the current search. The engine call isn't interruptible, so we terminate the
    * worker outright, reject anything in flight, and respawn a fresh worker so the next
-   * request starts cleanly.
+   * request starts cleanly. Rejections carry `err.cancelled === true` so callers can
+   * distinguish an intentional cancel from a real failure without string-matching.
    */
   function cancel() {
-    if (worker) {
-      worker.terminate();
-      worker = null;
-    }
+    disposeWorker();
     const err = new Error('AI request cancelled');
-    for (const entry of pending.values()) entry.reject(err);
-    pending.clear();
+    err.cancelled = true;
+    rejectAll(err);
     ensureWorker(); // respawn eagerly
   }
 

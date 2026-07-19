@@ -10,6 +10,10 @@
 //   out: { type:'result', id, move }   // raw engine return; client decodes Connect6
 //        { type:'error',  id, message }
 
+// Cached once per worker: the engine loads on the first request and is reused. It is
+// deliberately NOT reset in place after a fatal wasm abort — re-importing the emscripten
+// glue would reuse the already-run global Module. Recovery is client-driven: aiClient
+// terminates this worker and spawns a fresh one (new scope -> enginePromise === null).
 let enginePromise = null;
 
 // Lazily load + initialise the engine, resolving to the ready Module. aiBase points at

@@ -154,10 +154,55 @@ describe('cancel', () => {
     expect(first.posted.length).toBe(1);
   });
 
-  it('rejects any in-flight request (engine calls are not interruptible)', async () => {
+  it('rejects any in-flight request with a typed error (err.cancelled === true)', async () => {
     const client = createAiClient(factory);
     const p = client.requestMove({ game: 1, level: 1, openingBook: 1, moves: [180] });
     client.cancel();
-    await expect(p).rejects.toThrow();
+    await expect(p).rejects.toMatchObject({ cancelled: true });
+  });
+});
+
+describe('crash recovery', () => {
+  it('worker onerror rejects in-flight (workerCrashed) and the next request gets a FRESH worker', async () => {
+    const client = createAiClient(factory);
+    const p = client.requestMove({ game: 1, level: 1, openingBook: 1, moves: [180] });
+    const first = FakeWorker.instances[0];
+
+    // Worker-level crash (uncaught error / failed load).
+    first.onerror(new Error('worker boom'));
+    await expect(p).rejects.toMatchObject({ workerCrashed: true });
+
+    // A reused dead worker would hang forever — the next request must spawn a new one.
+    const p2 = client.requestMove({ game: 1, level: 1, openingBook: 1, moves: [180] });
+    expect(FakeWorker.instances.length).toBe(2);
+    const second = FakeWorker.instances[1];
+    expect(second).not.toBe(first);
+    second._reply({ type: 'result', id: second.posted[0].id, move: 200 });
+    await expect(p2).resolves.toEqual({ moves: [200] });
+  });
+
+  it('a fatal engine error tears down the worker so the next request re-inits a fresh engine', async () => {
+    const client = createAiClient(factory);
+    const p = client.requestMove({ game: 1, level: 1, openingBook: 1, moves: [180] });
+    const first = FakeWorker.instances[0];
+
+    first._reply({ type: 'error', id: first.posted[0].id, message: 'abort(OOM)' });
+    await expect(p).rejects.toThrow(/abort/);
+    expect(first.terminated).toBe(true); // torn down — a post-abort Module can't recover in place
+
+    const p2 = client.requestMove({ game: 1, level: 1, openingBook: 1, moves: [180] });
+    expect(FakeWorker.instances.length).toBe(2);
+    const second = FakeWorker.instances[1];
+    second._reply({ type: 'result', id: second.posted[0].id, move: 199 });
+    await expect(p2).resolves.toEqual({ moves: [199] });
+  });
+
+  it('onerror rejects every in-flight request, not just one', async () => {
+    const client = createAiClient(factory);
+    const p1 = client.requestMove({ game: 1, level: 1, openingBook: 1, moves: [180] });
+    const p2 = client.requestMove({ game: 1, level: 1, openingBook: 1, moves: [180, 200] });
+    FakeWorker.instances[0].onerror(new Error('boom'));
+    await expect(p1).rejects.toMatchObject({ workerCrashed: true });
+    await expect(p2).rejects.toMatchObject({ workerCrashed: true });
   });
 });
