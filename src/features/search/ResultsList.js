@@ -15,6 +15,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useGamesSearchQuery, useGameQuery } from '../../app/api';
 import { openTab, activateTab } from '../../model/docSlice';
 import { buildTreeFromMoves, gameTitle, gameTabId } from '../../shell/Workbench';
+import PanelError from '../../shell/PanelError';
 
 export const PAGE_SIZE = 25;
 const ROW_HEIGHT = 56;
@@ -78,7 +79,7 @@ export default function ResultsList({ game, scope, filters, moves }) {
   const searchArg = positionMode
     ? { game, moves, scope, filters, offset, limit: PAGE_SIZE }
     : { game, scope, filters, offset, limit: PAGE_SIZE };
-  const { data, isFetching } = useGamesSearchQuery(searchArg);
+  const { data, isFetching, error } = useGamesSearchQuery(searchArg);
   const games = (data && data.games) || [];
   const total = (data && data.total) || 0;
 
@@ -170,7 +171,8 @@ export default function ResultsList({ game, scope, filters, moves }) {
               </Box>
             );
           })}
-          {games.length === 0 && !isFetching && (
+          <PanelError error={error} />
+          {!error && games.length === 0 && !isFetching && (
             <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
               No games found.
             </Typography>

@@ -294,6 +294,17 @@ describe('ExplorerPanel', () => {
     renderWith(makeStore([180], [0]), <ExplorerPanel />);
     expect(screen.getByTestId('explorer-summary').textContent).toContain('100');
   });
+
+  test('a stats query error is surfaced instead of a silent empty summary (P2 pickup)', () => {
+    usePositionStatsQuery.mockReturnValue({
+      data: undefined,
+      isFetching: false,
+      error: { status: 500, data: { error: { message: 'stats boom' } } },
+    });
+    renderWith(makeStore([180], [0]), <ExplorerPanel />);
+    expect(screen.getByText('stats boom')).toBeTruthy();
+    expect(screen.queryByTestId('explorer-summary')).toBeNull();
+  });
 });
 
 // ===================================================================================

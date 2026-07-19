@@ -14,15 +14,17 @@
 // a Task 9 integration item. The rotation transform itself is exercised by HeatOverlay's unit
 // tests at rotation ≠ 0.
 import { useCallback, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { usePositionStatsQuery } from '../../app/api';
+import { selectScope } from '../../app/uiSlice';
 import { applyMove } from '../../model/docSlice';
 import { gridSizeForGame } from '../../board/boardGeometry';
+import PanelError from '../../shell/PanelError';
 import ResultsList from '../search/ResultsList';
 import useDebouncedPosition from './useDebouncedPosition';
 import StatsRows, { sortedRows } from './StatsRows';
@@ -34,14 +36,15 @@ export default function ExplorerPanel() {
   const dispatch = useDispatch();
   const pos = useDebouncedPosition(150);
   const [hoverCell, setHoverCell] = useState(null);
+  const scope = useSelector(selectScope);
 
   const hasPos = !!pos;
   const game = pos ? pos.game : 1;
   const moves = pos ? pos.moves : [];
   const gridSize = gridSizeForGame(game);
 
-  const { data, isFetching } = usePositionStatsQuery(
-    { game, moves, scope: 'archive', filters: null },
+  const { data, isFetching, error } = usePositionStatsQuery(
+    { game, moves, scope, filters: null },
     { skip: !hasPos }
   );
 
@@ -76,11 +79,15 @@ export default function ExplorerPanel() {
         {isFetching && <CircularProgress size={14} />}
       </Box>
 
-      <Typography data-testid="explorer-summary" variant="caption" color="text.secondary" sx={{ px: 1 }}>
-        {totalGames != null
-          ? `${totalGames} games · ${totalWinPct != null ? `${totalWinPct}% win for mover` : 'win% n/a'}`
-          : 'No master games from this position.'}
-      </Typography>
+      <PanelError error={error} />
+
+      {!error && (
+        <Typography data-testid="explorer-summary" variant="caption" color="text.secondary" sx={{ px: 1 }}>
+          {totalGames != null
+            ? `${totalGames} games · ${totalWinPct != null ? `${totalWinPct}% win for mover` : 'win% n/a'}`
+            : 'No master games from this position.'}
+        </Typography>
+      )}
 
       <Box sx={{ p: 1 }}>
         <Box
@@ -104,7 +111,7 @@ export default function ExplorerPanel() {
       <Box sx={{ px: 1, pt: 1 }}>
         <Typography variant="subtitle2">Games through here</Typography>
       </Box>
-      <ResultsList game={game} scope="archive" filters={null} moves={moves} />
+      <ResultsList game={game} scope={scope} filters={null} moves={moves} />
     </Box>
   );
 }

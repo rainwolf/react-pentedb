@@ -20,16 +20,24 @@ import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import docsReducer from '../../model/docSlice';
+import uiReducer from '../../app/uiSlice';
 
 vi.mock('../../app/api', () => ({
   useVenuesQuery: vi.fn(),
   usePlayersQuery: vi.fn(),
   useGamesSearchQuery: vi.fn(),
   useGameQuery: vi.fn(),
+  usePingQuery: vi.fn(),
+  // used by the CollectionList imported through SearchPanel (only rendered on the My-games tab)
+  useCollectionQuery: vi.fn(() => ({ data: { total: 0, games: [] }, isFetching: false })),
+  useCollectionGameQuery: vi.fn(() => ({ data: undefined })),
+  useDeleteCollectionGameMutation: vi.fn(() => [vi.fn(() => ({ unwrap: () => Promise.resolve({}) })), {}]),
+  useImportGamesMutation: vi.fn(() => [vi.fn(() => ({ unwrap: () => Promise.resolve({}) })), {}]),
+  useSaveAnalysisMutation: vi.fn(() => [vi.fn(() => ({ unwrap: () => Promise.resolve({}) })), {}]),
 }));
 
 // eslint-disable-next-line import/first
-import { useVenuesQuery, usePlayersQuery, useGamesSearchQuery, useGameQuery } from '../../app/api';
+import { useVenuesQuery, usePlayersQuery, useGamesSearchQuery, useGameQuery, usePingQuery } from '../../app/api';
 // eslint-disable-next-line import/first
 import SearchPanel from './SearchPanel';
 // eslint-disable-next-line import/first
@@ -51,8 +59,11 @@ const VENUES = {
   ],
 };
 
-function makeStore() {
-  return configureStore({ reducer: { docs: docsReducer } });
+function makeStore(scope) {
+  return configureStore({
+    reducer: { docs: docsReducer, ui: uiReducer },
+    preloadedState: scope ? { ui: { scope } } : undefined,
+  });
 }
 
 function renderWith(store, node) {
@@ -87,10 +98,12 @@ beforeEach(() => {
   usePlayersQuery.mockReset();
   useGamesSearchQuery.mockReset();
   useGameQuery.mockReset();
+  usePingQuery.mockReset();
   useVenuesQuery.mockReturnValue({ data: VENUES, isLoading: false });
   usePlayersQuery.mockReturnValue({ data: { players: [] }, isFetching: false });
   useGamesSearchQuery.mockReturnValue({ data: { total: 0, games: [] }, isFetching: false });
   useGameQuery.mockReturnValue({ data: undefined, isSuccess: false });
+  usePingQuery.mockReturnValue({ data: { auth: null } }); // anonymous by default
   vi.useFakeTimers();
 });
 
@@ -286,6 +299,20 @@ describe('ResultsList — pagination controls', () => {
   });
 });
 
+describe('ResultsList — error state (P2 pickup)', () => {
+  test('a search error is surfaced instead of the empty "No games found" state', () => {
+    useGamesSearchQuery.mockReturnValue({
+      data: undefined,
+      isFetching: false,
+      error: { status: 500, data: { error: { message: 'search boom' } } },
+    });
+    const store = makeStore();
+    renderWith(store, <ResultsList game={1} scope="archive" filters={null} />);
+    expect(screen.getByText('search boom')).toBeTruthy();
+    expect(screen.queryByText(/No games found/i)).toBeNull();
+  });
+});
+
 describe('ResultsList — null player rendering', () => {
   test('a NULL player (per GameHeader contract) renders as "Unknown" without crashing', () => {
     useGamesSearchQuery.mockReturnValue({
@@ -346,21 +373,37 @@ describe('row click opens a game tab at the final position', () => {
 });
 
 // ===================================================================================
-// SearchPanel — composition / scope placeholder
+// SearchPanel — composition / auth-gated scope + import / scope wiring
 // ===================================================================================
 describe('SearchPanel', () => {
-  test('renders the filter form, an Archive-only scope placeholder, and a wired results list', () => {
+  test('anonymous: no scope toggle, no import button, results default to archive', () => {
     const store = makeStore();
     renderWith(store, <SearchPanel />);
-    // 'Search' text matches both the panel heading and FilterForm's submit button —
-    // scope to the heading role to disambiguate.
     expect(screen.getByRole('heading', { name: 'Search' })).toBeTruthy();
-    expect(screen.getByText('Archive')).toBeTruthy();
-    expect(screen.getByLabelText('Mine').disabled).toBe(true);
-    expect(screen.getByLabelText('Both').disabled).toBe(true);
-    // ResultsList calls the hook with a single args object (no RTK Query options arg).
+    // ScopeToggle renders nothing while anonymous, and there is no Import affordance.
+    expect(screen.queryByLabelText('Mine')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Import/i })).toBeNull();
     expect(useGamesSearchQuery).toHaveBeenCalledWith(
       expect.objectContaining({ game: 1, scope: 'archive', filters: null })
+    );
+  });
+
+  test('logged-in: shows the Archive/Mine/Both toggle and an Import button', () => {
+    usePingQuery.mockReturnValue({ data: { auth: 'iostest' } });
+    const store = makeStore();
+    renderWith(store, <SearchPanel />);
+    expect(screen.getByLabelText('Archive')).toBeTruthy();
+    expect(screen.getByLabelText('Mine')).toBeTruthy();
+    expect(screen.getByLabelText('Both')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Import/i })).toBeTruthy();
+  });
+
+  test('the ui-slice scope feeds the results query (scope=mine)', () => {
+    usePingQuery.mockReturnValue({ data: { auth: 'iostest' } });
+    const store = makeStore('mine');
+    renderWith(store, <SearchPanel />);
+    expect(useGamesSearchQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ game: 1, scope: 'mine', filters: null })
     );
   });
 });
