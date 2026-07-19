@@ -61,7 +61,9 @@ export default function ThreatBands({ rotation = 0 }) {
       pointerEvents="none"
       style={{ position: 'absolute', inset: 0 }}
     >
-      <g transform="translate(10,10)">
+      {/* Phase 4 registration: reproduce the board's transform stack so band endpoints and
+          gain markers land dead-centre on their grid intersections (see HeatOverlay). */}
+      <g transform="translate(14.5,14.5) scale(0.95)">
         {shown.map((t, i) => {
           const cat = categoryOf(t.type);
           const tint = TINT[t.player] || TINT[1];

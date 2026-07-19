@@ -4,29 +4,47 @@
    the 13 per-variant board-color fill classes). Room/chat/table chrome
    (.name a, @keyframes glowing, .button-glow) is intentionally excluded —
    out of scope for the board+rules copy (contract §5: no external images,
-   only CSS needs porting). */
+   only CSS needs porting).
 
+   Phase 4 premium pass (Task 5): the grid ink, hoshi dots, stone shading and
+   board frame are elevated here — CSS only, Board.js logic untouched. See
+   docs/design-notes.md for the board-skin rationale. */
+
+/* Grid ink: a warm near-black umber rather than pure #000, hairline-thin. Reads as a
+   pressed wood grid on the pastel felt instead of a printed black overlay. */
 .boardline {
-    stroke: #000000;
-    stroke-width: 0.25px;
+    stroke: #2c231b;
+    stroke-width: 0.22px;
+    stroke-opacity: 0.82;
     pointer-events: none;
 }
 
 .boardcircle {
-    stroke: #000000;
-    stroke-width: 0.25px;
+    stroke: #2c231b;
+    stroke-width: 0.22px;
+    stroke-opacity: 0.82;
     pointer-events: none;
 }
 
 .boarddot {
-    stroke: #000000;
-    fill: #000000;
-    stroke-width: 1px;
+    stroke: #241c14;
+    fill: #241c14;
+    stroke-width: 0.9px;
     pointer-events: none;
 }
 
 .board {
     user-drag: none;
+    user-select: none;
+}
+
+/* Coordinate labels (Board.js #coordinates group). Theme-aware ink via a CSS variable the
+   MUI CssBaseline sets per mode, so the A–T / 1–19 rulers stay legible on BOTH the light
+   surface and the dark surface (previously fixed black → invisible in dark mode). */
+#svgboard text {
+    fill: var(--board-coord-ink, #6b5f52);
+    font-weight: 600;
+    letter-spacing: 0.1px;
     user-select: none;
 }
 
@@ -43,19 +61,45 @@
     animation: board-shake 0.3s ease-in-out;
 }
 
+/* Place animation: a newly-mounted stone eases in ≤150 ms. React reuses the DOM of stones
+   that were already on the board, so this fires ONLY on the stone(s) that just appeared —
+   a place, a navigation jump, or a rotation — never a re-animation of the standing position.
+   Guarded behind no-preference so prefers-reduced-motion users get an instant, static stone.
+   Selector: only placed stones carry filter="url(#shadow)" (hover ghosts / hoshi / last-move
+   markers do not), so the ruler and overlays are untouched. */
+@keyframes stone-place {
+    from { opacity: 0; transform: scale(0.72); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    #svgboard circle[filter] {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: stone-place 0.13s cubic-bezier(0.34, 1.32, 0.64, 1) both;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .board-shake { animation: none; }
+}
+
+/* Stone glass shading. The radial gradient (Stone.js) runs --color1 (a 40%/40% specular
+   highlight) → --color2 (the rim), so a brighter, cooler highlight and a deeper rim read
+   as polished glass rather than a flat disc. */
 #black-stone-gradient {
-    --color1: grey;
-    --color2: black;
+    --color1: #5f666e;
+    --color2: #0b0d10;
 }
 
 #white-stone-gradient {
-    --color1: white;
-    --color2: gainsboro;
+    --color1: #ffffff;
+    --color2: #c4c9d0;
 }
 
 #red-stone-gradient {
-    --color1: pink;
-    --color2: red;
+    --color1: #ff9aa0;
+    --color2: #d0021b;
 }
 
 .pente {
@@ -112,4 +156,14 @@
 
 .renju {
     fill: #D98880
+}
+
+/* Board frame: a soft elevation under the board square so it reads as a physical board set
+   on the workbench surface, not a flat SVG. No layout shift (box-shadow only); reads in both
+   themes. The container is the board-pane square (BoardPane sizes it to the board). */
+[data-testid="board-pane"] {
+    border-radius: 10px;
+    box-shadow:
+        0 1px 2px rgba(24, 18, 12, 0.14),
+        0 10px 28px -8px rgba(24, 18, 12, 0.28);
 }

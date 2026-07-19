@@ -9,8 +9,12 @@
 // list. Rendering canonical cells directly would misplace every ghost under any non-identity
 // rotation. `hoverCell` is compared in canonical space (it is the row's canonical move).
 //
-// Geometry is a plain 10-unit grid (placeholder alignment; the Phase 4 pass tunes exact
-// registration against the real board's transforms).
+// Geometry (Phase 4 registration): the overlay SVG shares the board's viewBox, so its inner
+// group reproduces the board's exact transform stack. A stone at (col,row) lands at
+// (9.5·col+14.5, 9.5·row+14.5) in that viewBox — the board's #boardgroup scale(0.95)∘
+// translate(5,5) composed with #whole's translate(5,5), applied to the BoardSquare's stone
+// centre. So a circle drawn at (10·col,10·row) under `translate(14.5,14.5) scale(0.95)` sits
+// dead-centre on its grid intersection, aligned with the rendered stones under any rotation.
 
 import { symCell } from '../viewer/boardSymmetry';
 import heatScale from './heatScale';
@@ -27,7 +31,7 @@ export default function HeatOverlay({ cells = [], gridSize = 19, rotation = 0, h
       pointerEvents="none"
       style={{ position: 'absolute', inset: 0 }}
     >
-      <g transform="translate(10,10)">
+      <g transform="translate(14.5,14.5) scale(0.95)">
         {cells.map(({ move, winPct }) => {
           const disp = symCell(move, rotation, n);
           const x = disp % n;
@@ -44,8 +48,8 @@ export default function HeatOverlay({ cells = [], gridSize = 19, rotation = 0, h
               r={isHover ? 4.6 : 3.6}
               fill={heatScale(winPct)}
               fillOpacity={isHover ? 0.95 : 0.68}
-              stroke={isHover ? '#000000' : 'none'}
-              strokeWidth={isHover ? 0.5 : 0}
+              stroke={isHover ? '#000000' : 'rgba(15,12,10,0.5)'}
+              strokeWidth={isHover ? 0.5 : 0.3}
             />
           );
         })}

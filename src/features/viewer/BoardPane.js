@@ -203,9 +203,14 @@ export default function BoardPane({ pointerCoarse } = {}) {
             )}
           </>
         ) : (
-          <Typography variant="body2" color="text.secondary">
-            No document open
-          </Typography>
+          <Box sx={{ textAlign: 'center', px: 4, color: 'text.secondary' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
+              No position open
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 0.5 }}>
+              Open a game or search a position to start analysing.
+            </Typography>
+          </Box>
         )}
       </Box>
     </Box>
