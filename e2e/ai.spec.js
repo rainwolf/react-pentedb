@@ -1,9 +1,12 @@
 const { test, expect } = require('@playwright/test');
 const { cell, activeMovesLen, waitBoardReady } = require('./helpers/board');
+// The app's own coordinate codec: alphaToCell is the exact inverse of the moveLabel the
+// suggestion chip renders, so hint legality is checked with production math, not a spec copy.
+const { alphaToCell } = require('../src/export/coords');
 
-// AI (anonymous, REAL wasm engine). Hint returns a legal suggestion for each of the six base
-// engine variants at level 1; play-vs-AI has the engine answer two turns; an unsupported variant
-// (D-Pente, id 5) shows the fallback instead of the controls.
+// AI (anonymous, REAL wasm engine). Hint returns a LEGAL suggestion (on-board, unoccupied cell —
+// two distinct for Connect6) for each of the six base engine variants at level 1; play-vs-AI has
+// the engine answer two turns; an unsupported variant (D-Pente, game 7) shows the fallback.
 const BASE_VARIANTS = [
   [1, 'Pente'],
   [3, 'Keryo-Pente'],
@@ -38,6 +41,21 @@ test.describe('ai', () => {
       await expect(chip).toBeVisible({ timeout: 90_000 });
       await expect(chip).toContainText('AI suggests');
       await expect(page.getByTestId('ai-error')).toHaveCount(0);
+
+      // Legality: parse the displayed coordinate(s) and map them back through the app's codec.
+      // A regression suggesting an occupied or off-board cell fails here (bad count, or
+      // alphaToCell throws, or the cell is out of range / the seeded stone).
+      const shown = (await chip.textContent()).replace(/^AI suggests\s*/, '');
+      const coords = [...shown.matchAll(/[A-HJ-T]\d{1,2}/g)].map((m) => m[0]);
+      const expectedCount = game === 13 ? 2 : 1; // Connect6 plays a two-stone turn
+      expect(coords).toHaveLength(expectedCount);
+      const cells = coords.map((c) => alphaToCell(c)); // throws on any off-board/malformed coord
+      for (const c of cells) {
+        expect(c).toBeGreaterThanOrEqual(0);
+        expect(c).toBeLessThanOrEqual(360);
+        expect(c).not.toBe(180); // the seeded centre stone must not be re-suggested
+      }
+      if (game === 13) expect(new Set(cells).size).toBe(2); // two DISTINCT cells
     });
   }
 

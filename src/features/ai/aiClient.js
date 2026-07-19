@@ -5,8 +5,8 @@
 // and decodes replies. See docs/.../wasm-ai-contract.md for the engine contract.
 
 // Canonical variant ids the AI supports: the six odd "base" variants plus their even
-// "Speed" twins. (D-Pente=5/6, G-Pente=7/8, Go=19.. etc. are intentionally excluded —
-// the engine falls back to plain Pente for them.)
+// "Speed" twins. (Gomoku=5/6, D-Pente=7/8, G-Pente=9/10, Go=19.. etc. are intentionally
+// excluded — the engine falls back to plain Pente for them.)
 const SUPPORTED = new Set([1, 2, 3, 4, 11, 12, 13, 14, 15, 16, 25, 26]);
 
 // Connect6 (base 13) plays two stones per turn; its even twin is 14.

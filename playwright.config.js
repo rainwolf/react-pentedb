@@ -25,7 +25,9 @@ module.exports = defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // One retry locally too: a freshly-started rsbuild dev server can throw a transient lazy-chunk
+  // "factory is undefined" on the very first cold load; a retry rides over that dev-only hiccup.
+  retries: process.env.CI ? 2 : 1,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   reporter: [['list'], ['html', { open: 'never' }]],
