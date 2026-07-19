@@ -152,7 +152,21 @@ export default function Workbench() {
   // fresh '/' load. A ref (persists across both StrictMode invocations, unlike closure
   // state) closes that hole the same way loadedRouteKeyRef does for the other branches.
   const defaultTabOpenedRef = useRef(false);
+  // Guards the route-loader effect against reconciling against URL changes that OUR OWN
+  // "active document -> URL sync" effect just wrote (see below) — e.g. cursor stepping
+  // issues a replaceState to a shorter /p/:game/:moves URL (activePos.moves is the line
+  // to the CURSOR, not the tab's full line — see selectActivePosition in docSlice.js).
+  // Without this, the loader re-derives a route key from that self-inflicted URL change,
+  // finds no tab with that (now cursor-truncated) key, and opens a SECOND scratch tab
+  // with a truncated tree instead of recognizing "this is the same tab, cursor moved."
+  // A ref (not a closure var) survives across the effect's own re-fires triggered by the
+  // very navigate() call it's meant to ignore.
+  const lastSyncedUrlRef = useRef(null);
   useEffect(() => {
+    // If the URL already matches what the sync effect below last wrote, this render's
+    // param change is self-inflicted (cursor-step replaceState), not an external
+    // navigation — skip reconciliation entirely. See lastSyncedUrlRef above.
+    if (location.pathname === lastSyncedUrlRef.current) return;
     if (gid !== undefined) {
       if (!gidValid) {
         navigate('/', { replace: true });
@@ -275,11 +289,13 @@ export default function Workbench() {
     const url = canonicalUrl(activeTab, activePos);
     if (url === location.pathname) {
       prevActiveIdRef.current = activeTab.id;
+      lastSyncedUrlRef.current = url;
       return;
     }
     const isTabSwitch = prevActiveIdRef.current !== activeTab.id;
     navigate(url, { replace: !isTabSwitch });
     prevActiveIdRef.current = activeTab.id;
+    lastSyncedUrlRef.current = url;
   }, [activeTab, activePos, location.pathname, navigate]);
 
   // --- Board (read-only) ----------------------------------------------------------

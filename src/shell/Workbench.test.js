@@ -17,6 +17,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import docsReducer, { openTab } from '../model/docSlice';
+import { mainline } from '../model/gameTree';
 import { ThemeModeProvider } from './theme';
 import AppRoutes from '../app/router';
 
@@ -184,6 +185,16 @@ describe('URL sync', () => {
     expect(window.history.length).toBe(baseLength);
     expect(pushSpy).not.toHaveBeenCalled();
 
+    // Regression guard: stepping the cursor must re-point the SAME scratch tab's
+    // cursor, not open a second tab keyed off the (now cursor-truncated) URL. Before
+    // the lastSyncedUrlRef fix, the route-loader effect misread its own replaceState
+    // as an external navigation to '/p/1/180', found no tab with that id, and opened
+    // a second scratch tab whose tree was truncated to just [180].
+    const tabsAfterStep = store.getState().docs.tabs;
+    expect(tabsAfterStep).toHaveLength(1);
+    const activeAfterStep = tabsAfterStep.find((t) => t.id === store.getState().docs.activeTabId);
+    expect(mainline(activeAfterStep.tree)).toEqual([180, 199]);
+
     pushSpy.mockRestore();
   });
 
@@ -201,5 +212,55 @@ describe('URL sync', () => {
 
     await waitFor(() => expect(window.location.pathname).toBe('/g/1'));
     expect(window.history.length).toBe(baseLength + 1);
+  });
+});
+
+describe('responsive layout', () => {
+  // useBreakpoint reads window.innerWidth in its useState initializer, so setting it
+  // BEFORE render is enough to pick the layout (no resize event needed). Capture and
+  // restore per-test so these three widths don't leak into the rest of the file (jsdom
+  // defaults to 1024 = 'medium').
+  let originalInnerWidth;
+  beforeEach(() => {
+    originalInnerWidth = window.innerWidth;
+  });
+  afterEach(() => {
+    window.innerWidth = originalInnerWidth;
+  });
+
+  test('1400px renders the three-pane wide layout', async () => {
+    window.innerWidth = 1400;
+    const store = makeStore();
+    renderWithMemoryRouter('/', store);
+    await waitFor(() => expect(store.getState().docs.tabs).toHaveLength(1));
+    // Right-panel Tabs (Explorer/AI/Threats) render for wide+medium; no bottom Games
+    // tab and no medium-only hamburger.
+    expect(screen.getByText('Threats')).toBeTruthy();
+    expect(screen.queryByText('Games')).toBeNull();
+    expect(screen.queryByLabelText('Open search panel')).toBeNull();
+  });
+
+  test('900px renders the medium two-pane + drawer layout', async () => {
+    window.innerWidth = 900;
+    const store = makeStore();
+    renderWithMemoryRouter('/', store);
+    await waitFor(() => expect(store.getState().docs.tabs).toHaveLength(1));
+    // Right panel still present, plus the TopBar hamburger that opens the search drawer;
+    // no narrow bottom Games tab.
+    expect(screen.getByText('Threats')).toBeTruthy();
+    expect(screen.getByLabelText('Open search panel')).toBeTruthy();
+    expect(screen.queryByText('Games')).toBeNull();
+  });
+
+  test('390px renders the narrow bottom-tabs layout', async () => {
+    window.innerWidth = 390;
+    const store = makeStore();
+    renderWithMemoryRouter('/', store);
+    await waitFor(() => expect(store.getState().docs.tabs).toHaveLength(1));
+    // Bottom mobile Tabs include a Games tab; the right panel (Threats) and the
+    // medium-only hamburger are both absent.
+    expect(screen.getByText('Games')).toBeTruthy();
+    expect(screen.queryByText('Threats')).toBeNull();
+    expect(screen.queryByLabelText('Open search panel')).toBeNull();
   });
 });
