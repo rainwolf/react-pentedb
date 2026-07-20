@@ -5,6 +5,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { BrowserRouter } from 'react-router-dom';
 import { store } from './app/store';
 import AppRoutes from './app/router';
+import ErrorBoundary from './shell/ErrorBoundary';
 import { ThemeModeProvider, useThemeModeContext, getTheme } from './shell/theme';
 
 function ThemedShell() {
@@ -14,7 +15,9 @@ function ThemedShell() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
-        <AppRoutes />
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
       </BrowserRouter>
     </ThemeProvider>
   );

@@ -14,7 +14,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 import { useGamesSearchQuery, useGameQuery } from '../../app/api';
 import { openTab, activateTab } from '../../model/docSlice';
-import { buildTreeFromMoves, gameTitle, gameTabId } from '../../shell/Workbench';
+import { buildTreeFromMoves, gameTitle, gameTabId } from '../../shell/gameTab';
 import PanelError from '../../shell/PanelError';
 
 export const PAGE_SIZE = 25;

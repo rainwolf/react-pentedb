@@ -15,6 +15,20 @@ const LOCAL_BACKEND = process.env.PUBLIC_LOCAL_BACKEND === '1';
 
 export default defineConfig({
   plugins: [pluginReact()],
+  // rsbuild defaults dev.lazyCompilation to { imports: true }, which compiles each
+  // dynamic-import() boundary on demand. Our shell (Workbench.js) mounts several
+  // React.lazy panels, and the default-visible SearchPanel synchronously requires a
+  // module (search/ResultsList) that is ALSO shared with the ExplorerPanel lazy chunk.
+  // On the very first cold load that shared module's factory isn't compiled yet when the
+  // panel requires it, so rspack throws "RuntimeError: factory is undefined
+  // (./src/features/search/ResultsList.js)" — the app renders blank, and only a manual
+  // reload (module now compiled + cached) recovers. Disabling lazy compilation compiles
+  // everything up front; for an app this size the startup cost is negligible and the
+  // first load is deterministic. (Prod builds never use lazy compilation, so this only
+  // affects `npm start`.)
+  dev: {
+    lazyCompilation: false,
+  },
   html: {
     template: './public/index.html',
   },
