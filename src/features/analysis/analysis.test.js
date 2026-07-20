@@ -56,9 +56,9 @@ function fixture() {
   return tree;
 }
 
-function makeStore(tree, cursorPath = []) {
+function makeStore(tree, cursorPath = [], game = 1) {
   const store = configureStore({ reducer: { docs: docsReducer } });
-  store.dispatch(openTab({ id: 't', kind: 'analysis', title: 'A', game: 1, tree, cursorPath }));
+  store.dispatch(openTab({ id: 't', kind: 'analysis', title: 'A', game, tree, cursorPath }));
   return store;
 }
 
@@ -231,6 +231,23 @@ describe('TreeView (render)', () => {
   test('chipLabel never crashes on the root node (m === null) and renders empty', () => {
     expect(chipLabel({ m: null, tags: [] })).toBe('');
     expect(chipLabel({ m: null, tags: ['!'] })).toBe(' !');
+  });
+
+  // gridSize-aware labeling: game 23 -> 13x13 (boardGeometry.gridSizeForGame). Move 84 is the
+  // 13-board centre (x=6,y=6) -> "G7". Under the WRONG (hardcoded-19) formula 84 would read as
+  // x=8,y=4 -> "J15" instead, so this also proves the component threads the active tab's game
+  // through to cellToAlpha rather than always assuming 19.
+  test('chipLabel(item, size) labels a 13x13-board move by the 13-board formula, not 19', () => {
+    expect(chipLabel({ m: 84, tags: [] }, 13)).toBe('G7');
+    expect(chipLabel({ m: 84, tags: [] })).not.toBe('G7'); // default size=19 gives a different label
+  });
+
+  test('renders a 13x13 game (id 23) move as its 13-board coordinate, not the 19-board one', () => {
+    const { tree } = addMove(createTree(), [], 84);
+    const store = makeStore(tree, [], 23); // game 23 -> gridSizeForGame = 13
+    renderWith(store, <TreeView />);
+    expect(screen.getByText('G7')).toBeTruthy();
+    expect(screen.queryByText('J15')).toBeNull(); // would appear if 19 were used instead
   });
 });
 

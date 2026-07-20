@@ -21,6 +21,7 @@ import Button from '@mui/material/Button';
 import { navTo, promoteVariation, deleteBranch } from '../../model/docSlice';
 import ExportMenu from '../exchange/ExportMenu';
 import { cellToAlpha } from '../../export/coords';
+import { gridSizeForGame } from '../../board/boardGeometry';
 
 const LONG_PRESS_MS = 500;
 
@@ -59,12 +60,13 @@ function samePath(a, b) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-// item.m is a flat cell (0..360) for every non-root node reaching this label; the root node
-// (m === null) is filtered out of buildTreeRows before it ever gets here, but cellToAlpha
-// throws RangeError on anything but an in-range integer, so guard defensively rather than
-// rely on that upstream filter.
-export function chipLabel(item) {
-  const label = item.m == null ? '' : cellToAlpha(item.m);
+// item.m is a flat cell (board-relative: move % gridSize, see GameClass) for every non-root
+// node reaching this label; the root node (m === null) is filtered out of buildTreeRows before
+// it ever gets here, but cellToAlpha throws RangeError on anything but an in-range integer, so
+// guard defensively rather than rely on that upstream filter. `size` must match the active
+// game's board (gridSizeForGame) — small Go variants (9x9/13x13) are narrower than 19.
+export function chipLabel(item, size = 19) {
+  const label = item.m == null ? '' : cellToAlpha(item.m, size);
   return item.tags && item.tags.length ? `${label} ${item.tags.join('')}` : label;
 }
 
@@ -76,7 +78,8 @@ export default function TreeView() {
   const longPressRef = useRef(null);
 
   if (!activeTab) return null;
-  const { tree, cursorPath } = activeTab;
+  const { tree, cursorPath, game } = activeTab;
+  const size = gridSizeForGame(game);
   const rows = buildTreeRows(tree);
 
   const openMenu = (anchorEl, path) => setMenu({ anchorEl, path });
@@ -132,7 +135,7 @@ export default function TreeView() {
                 size="small"
                 color={isCursor ? 'primary' : 'default'}
                 variant={isCursor ? 'filled' : 'outlined'}
-                label={chipLabel(it)}
+                label={chipLabel(it, size)}
                 onClick={() => dispatch(navTo(it.path))}
                 onContextMenu={(e) => handleContextMenu(e, it.path)}
                 onTouchStart={(e) => startLongPress(e.currentTarget, it.path)}

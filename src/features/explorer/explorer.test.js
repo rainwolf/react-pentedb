@@ -223,6 +223,18 @@ describe('StatsRows helpers', () => {
     // 180 is the centre of a 19x19 board (x=9, y=9) -> column K (I skipped), row 10.
     expect(moveLabel(180, N)).toBe('K10');
   });
+
+  // Characterization/regression values, independently computed (cell = x + y*n, row = n-y,
+  // columns skip I) — must stay byte-identical whether moveLabel computes them itself or
+  // delegates to the shared, size-aware cellToAlpha (src/export/coords.js). moveLabel is
+  // called with gridSize 9/13/19 in real usage (AiPanel/ExplorerPanel via gridSizeForGame),
+  // so this is the guard against a consolidation silently mislabeling small-board variants.
+  test('moveLabel is size-aware across board sizes (9/13/19), null-safe regardless of size', () => {
+    expect(moveLabel(180, 19)).toBe('K10'); // 19-board centre
+    expect(moveLabel(84, 13)).toBe('G7'); // 13-board centre
+    expect(moveLabel(40, 9)).toBe('E5'); // 9-board centre (matches real Go 9x9 notation)
+    expect(moveLabel(null, 13)).toBe('');
+  });
 });
 
 describe('StatsRows — interaction', () => {

@@ -333,6 +333,20 @@ describe('MoveStrip', () => {
     expect(moveLabel(null)).toBe('');
     expect(moveLabel(undefined)).toBe('');
   });
+
+  // gridSize-aware labeling: move 84 on a 13x13 board (x=6,y=6) -> "G7"; under the WRONG
+  // (hardcoded-19) formula 84 would read as x=8,y=4 -> "J15" instead.
+  test('moveLabel(m, size) labels a 13x13-board move by the 13-board formula, not 19', () => {
+    expect(moveLabel(84, 13)).toBe('G7');
+    expect(moveLabel(84)).not.toBe('G7'); // default size=19 gives a different label
+  });
+
+  test('renders a 13x13 game (id 23) move as its 13-board coordinate, not the 19-board one', () => {
+    const store = makeStore([84], [0], 23); // game 23 -> gridSizeForGame = 13
+    renderWith(store, <MoveStrip />);
+    expect(screen.getByText('G7')).toBeTruthy();
+    expect(screen.queryByText('J15')).toBeNull(); // would appear if 19 were used instead
+  });
 });
 
 describe('capture counter', () => {

@@ -15,13 +15,16 @@ import TreeView from '../analysis/TreeView';
 import TagBar from '../analysis/TagBar';
 import CommentBox from '../analysis/CommentBox';
 import { cellToAlpha } from '../../export/coords';
+import { gridSizeForGame } from '../../board/boardGeometry';
 
 // m -> human-readable board coordinate (e.g. 180 -> "K10"). buildStripItems only ever pushes
 // items for nodes reached by walking past the root, so `m` should never be null here — but
 // cellToAlpha throws RangeError on anything but an in-range integer, so guard defensively
-// rather than rely on that upstream invariant. Exported for unit testing.
-export function moveLabel(m) {
-  return m == null ? '' : cellToAlpha(m);
+// rather than rely on that upstream invariant. `size` must match the active game's board
+// (gridSizeForGame) — small Go variants (9x9/13x13) are narrower than 19. Exported for
+// unit testing.
+export function moveLabel(m, size = 19) {
+  return m == null ? '' : cellToAlpha(m, size);
 }
 
 // Pure: the chip descriptors for `cursorPath` in `tree`. Walks the cursor path, then follows
@@ -59,6 +62,7 @@ export default function MoveStrip() {
   if (!activeTab) return null;
   const items = buildStripItems(activeTab.tree, activeTab.cursorPath);
   if (items.length === 0) return null;
+  const size = gridSizeForGame(activeTab.game);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -85,7 +89,7 @@ export default function MoveStrip() {
             onClick={() => dispatch(navTo(it.path))}
             label={
               <Box component="span" sx={{ display: 'inline-flex', alignItems: 'baseline', gap: 0.25 }}>
-                <span>{moveLabel(it.m)}</span>
+                <span>{moveLabel(it.m, size)}</span>
                 {it.branches > 0 && (
                   <Box component="span" sx={{ fontSize: '0.7em', opacity: 0.75 }}>{`+${it.branches}`}</Box>
                 )}

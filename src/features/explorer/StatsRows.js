@@ -11,17 +11,13 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
 import heatScale from './heatScale';
+import { cellToAlpha } from '../../export/coords';
 
-// Column letters skip 'I' (standard Go/Pente board notation).
-const COLS = 'ABCDEFGHJKLMNOPQRST';
-
-// Flat cell (cell = y*n + x) → board coordinate, e.g. centre of 19x19 → "K10".
+// Flat cell (cell = y*n + x) → board coordinate, e.g. centre of 19x19 → "K10". Delegates to
+// the shared cellToAlpha (src/export/coords.js), which is size-aware (n) and applies the same
+// I-skipping column-letter rule.
 export function moveLabel(cell, n = 19) {
-  if (cell == null) return '';
-  const x = cell % n;
-  const y = Math.floor(cell / n);
-  const col = COLS[x] || '?';
-  return `${col}${n - y}`;
+  return cell == null ? '' : cellToAlpha(cell, n);
 }
 
 // Candidate rows, ordered by popularity (games) descending. Copy first (never mutate props).

@@ -18,16 +18,19 @@
 
 const SIZE = 19;
 
-// cell (0..360) -> coordinate token, e.g. 180 -> "K10". Throws RangeError off-board.
-export function cellToAlpha(cell) {
-  if (!Number.isInteger(cell) || cell < 0 || cell >= SIZE * SIZE) {
+// cell (0..size*size-1) -> coordinate token, e.g. 180 -> "K10". Throws RangeError off-board.
+// `size` defaults to 19 (the standard board) so every existing caller (SGF/PGN codecs,
+// alphaToCell's round-trip) is unaffected; small-board Go variants (9x9, 13x13, ...) pass
+// their own gridSize explicitly (see GameClass: move % gridSize).
+export function cellToAlpha(cell, size = SIZE) {
+  if (!Number.isInteger(cell) || cell < 0 || cell >= size * size) {
     throw new RangeError(`cell out of range: ${cell}`);
   }
-  const x = cell % SIZE;
-  const y = Math.floor(cell / SIZE);
+  const x = cell % size;
+  const y = Math.floor(cell / size);
   // 'A'+x, skipping 'I' (code 73): any x>=8 shifts one letter up.
   const letter = String.fromCharCode(65 + x + (x >= 8 ? 1 : 0));
-  const row = SIZE - y;
+  const row = size - y;
   return `${letter}${row}`;
 }
 

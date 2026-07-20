@@ -57,6 +57,28 @@ describe('round-trip: every one of the 361 cells', () => {
   });
 });
 
+describe('cellToAlpha — size-aware (small-board Go variants, size defaults to 19)', () => {
+  test('size omitted still defaults to 19 (existing callers unchanged)', () => {
+    expect(cellToAlpha(180)).toBe('K10');
+  });
+
+  test('13x13: centre cell 84 (x=6,y=6) -> G7, not the 19-board label for 84', () => {
+    // 13-wide board: 6 + 6*13 = 84; x=6 -> G (before the I skip); row = 13 - 6 = 7.
+    expect(cellToAlpha(84, 13)).toBe('G7');
+  });
+
+  test('13x13: the I-skip still applies past column H (x=8 -> J)', () => {
+    // cell 8 on a 13-wide board: x=8, y=0 -> J13 (row = 13 - 0).
+    expect(cellToAlpha(8, 13)).toBe('J13');
+  });
+
+  test('9x9: the last valid cell (80) and one past it (81, out of range)', () => {
+    // 9-wide board, cell 80: x=80%9=8 -> J (I skipped), y=floor(80/9)=8 -> row=9-8=1 -> "J1".
+    expect(cellToAlpha(80, 9)).toBe('J1');
+    expect(() => cellToAlpha(81, 9)).toThrow(RangeError); // 9*9 = 81 is one past the last cell
+  });
+});
+
 describe('alphaToCell — malformed input throws RangeError', () => {
   test.each([
     'I5', //   the skipped column letter is not a valid coordinate
