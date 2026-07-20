@@ -11,13 +11,13 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
 import heatScale from './heatScale';
-import { cellToAlpha } from '../../export/coords';
+import { formatMove } from '../../export/coords';
 
 // Flat cell (cell = y*n + x) → board coordinate, e.g. centre of 19x19 → "K10". Delegates to
-// the shared cellToAlpha (src/export/coords.js), which is size-aware (n) and applies the same
-// I-skipping column-letter rule.
+// the shared formatMove (src/export/coords.js), which is size-aware (n), null-safe, and renders
+// the pass sentinel (n*n, shared by Go and Renju passes) as "PASS" instead of throwing.
 export function moveLabel(cell, n = 19) {
-  return cell == null ? '' : cellToAlpha(cell, n);
+  return formatMove(cell, n);
 }
 
 // Candidate rows, ordered by popularity (games) descending. Copy first (never mutate props).

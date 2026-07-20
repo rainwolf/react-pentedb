@@ -20,7 +20,7 @@ import Button from '@mui/material/Button';
 
 import { navTo, promoteVariation, deleteBranch } from '../../model/docSlice';
 import ExportMenu from '../exchange/ExportMenu';
-import { cellToAlpha } from '../../export/coords';
+import { formatMove } from '../../export/coords';
 import { gridSizeForGame } from '../../board/boardGeometry';
 
 const LONG_PRESS_MS = 500;
@@ -62,11 +62,12 @@ function samePath(a, b) {
 
 // item.m is a flat cell (board-relative: move % gridSize, see GameClass) for every non-root
 // node reaching this label; the root node (m === null) is filtered out of buildTreeRows before
-// it ever gets here, but cellToAlpha throws RangeError on anything but an in-range integer, so
-// guard defensively rather than rely on that upstream filter. `size` must match the active
-// game's board (gridSizeForGame) — small Go variants (9x9/13x13) are narrower than 19.
+// it ever gets here, and formatMove is null-safe regardless. formatMove also renders the pass
+// sentinel (gridSize*gridSize, shared by Go and Renju passes) as "PASS" instead of throwing.
+// `size` must match the active game's board (gridSizeForGame) — small Go/Renju variants
+// (9x9/13x13/15x15) are narrower than 19.
 export function chipLabel(item, size = 19) {
-  const label = item.m == null ? '' : cellToAlpha(item.m, size);
+  const label = formatMove(item.m, size);
   return item.tags && item.tags.length ? `${label} ${item.tags.join('')}` : label;
 }
 

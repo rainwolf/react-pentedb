@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { cellToAlpha, alphaToCell } from '../coords';
+import { cellToAlpha, alphaToCell, formatMove } from '../coords';
 
 // Alpha-numeric coordinate text per sgf-pgn-formats.md §1.2 / §7.3: columns A..H,J..T
 // (letter I skipped), row = 19 - y, cell = x + y*19.
@@ -76,6 +76,36 @@ describe('cellToAlpha — size-aware (small-board Go variants, size defaults to 
     // 9-wide board, cell 80: x=80%9=8 -> J (I skipped), y=floor(80/9)=8 -> row=9-8=1 -> "J1".
     expect(cellToAlpha(80, 9)).toBe('J1');
     expect(() => cellToAlpha(81, 9)).toThrow(RangeError); // 9*9 = 81 is one past the last cell
+  });
+});
+
+describe('formatMove — UI display helper: tolerates null and the pass sentinel; cellToAlpha stays strict', () => {
+  // The pass sentinel is gridSize*gridSize (GameClass: Go pass AND Renju pass share it — Renju
+  // passes are a shipped, DB-persisted feature). cellToAlpha correctly rejects it as out-of-range
+  // (that's its contract for the codecs); formatMove is the UI-only wrapper that renders "PASS"
+  // instead of crashing.
+  test('null/undefined -> empty string (root node / no move)', () => {
+    expect(formatMove(null)).toBe('');
+    expect(formatMove(undefined)).toBe('');
+  });
+
+  test('an in-range cell still delegates to cellToAlpha (180 -> K10, default size 19)', () => {
+    expect(formatMove(180)).toBe('K10');
+  });
+
+  test('the pass sentinel (size*size) renders "PASS" instead of throwing, at every real board size', () => {
+    expect(formatMove(19 * 19)).toBe('PASS'); // 361, default size 19
+    expect(formatMove(19 * 19, 19)).toBe('PASS');
+    expect(formatMove(13 * 13, 13)).toBe('PASS'); // 169
+    expect(formatMove(9 * 9, 9)).toBe('PASS'); // 81
+    expect(formatMove(15 * 15, 15)).toBe('PASS'); // 225 — Renju board (gridSizeForGame 31/32/81)
+  });
+
+  test('cellToAlpha itself is UNCHANGED and still throws on the very same pass cells (strict for codecs)', () => {
+    expect(() => cellToAlpha(19 * 19, 19)).toThrow(RangeError);
+    expect(() => cellToAlpha(13 * 13, 13)).toThrow(RangeError);
+    expect(() => cellToAlpha(9 * 9, 9)).toThrow(RangeError);
+    expect(() => cellToAlpha(15 * 15, 15)).toThrow(RangeError);
   });
 });
 

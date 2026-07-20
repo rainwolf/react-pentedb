@@ -34,6 +34,18 @@ export function cellToAlpha(cell, size = SIZE) {
   return `${letter}${row}`;
 }
 
+// UI-only display wrapper around cellToAlpha. cellToAlpha stays STRICT (throws on the pass
+// sentinel and anything else out of range — the SGF/PGN codecs rely on that). formatMove is for
+// label sites that must never crash: null (no move / root) -> '', the pass sentinel
+// (cell === size*size, see GameClass — Go pass AND Renju pass share it; Renju passes are a
+// shipped, DB-persisted feature) -> "PASS" (matching GameClass's own pass label), otherwise
+// delegates straight to cellToAlpha.
+export function formatMove(cell, size = SIZE) {
+  if (cell == null) return '';
+  if (cell >= size * size) return 'PASS';
+  return cellToAlpha(cell, size);
+}
+
 // coordinate token -> cell. Throws RangeError on any malformed / off-board input.
 export function alphaToCell(str) {
   if (typeof str !== 'string') throw new RangeError(`not a coordinate: ${str}`);

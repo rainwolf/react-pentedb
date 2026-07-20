@@ -14,17 +14,17 @@ import { navTo } from '../../model/docSlice';
 import TreeView from '../analysis/TreeView';
 import TagBar from '../analysis/TagBar';
 import CommentBox from '../analysis/CommentBox';
-import { cellToAlpha } from '../../export/coords';
+import { formatMove } from '../../export/coords';
 import { gridSizeForGame } from '../../board/boardGeometry';
 
 // m -> human-readable board coordinate (e.g. 180 -> "K10"). buildStripItems only ever pushes
 // items for nodes reached by walking past the root, so `m` should never be null here — but
-// cellToAlpha throws RangeError on anything but an in-range integer, so guard defensively
-// rather than rely on that upstream invariant. `size` must match the active game's board
-// (gridSizeForGame) — small Go variants (9x9/13x13) are narrower than 19. Exported for
-// unit testing.
+// formatMove is null-safe regardless. It also renders the pass sentinel (gridSize*gridSize,
+// shared by Go and Renju passes) as "PASS" instead of throwing. `size` must match the active
+// game's board (gridSizeForGame) — small Go/Renju variants (9x9/13x13/15x15) are narrower than
+// 19. Exported for unit testing.
 export function moveLabel(m, size = 19) {
-  return m == null ? '' : cellToAlpha(m, size);
+  return formatMove(m, size);
 }
 
 // Pure: the chip descriptors for `cursorPath` in `tree`. Walks the cursor path, then follows

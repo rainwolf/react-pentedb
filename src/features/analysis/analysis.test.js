@@ -249,6 +249,31 @@ describe('TreeView (render)', () => {
     expect(screen.getByText('G7')).toBeTruthy();
     expect(screen.queryByText('J15')).toBeNull(); // would appear if 19 were used instead
   });
+
+  // Pass-move regression: the pass sentinel is gridSize*gridSize (GameClass — Go AND Renju
+  // share it; Renju passes are a shipped, DB-persisted feature via CollectionList/fromWire).
+  // Before this fix, cellToAlpha(item.m, size) threw RangeError on the sentinel -> render CRASH.
+  // chipLabel must render "PASS" instead, at every real board size including Renju's 15.
+  test('chipLabel renders "PASS" for the pass sentinel instead of throwing, at every board size', () => {
+    expect(chipLabel({ m: 19 * 19, tags: [] })).toBe('PASS'); // default size 19
+    expect(chipLabel({ m: 13 * 13, tags: [] }, 13)).toBe('PASS');
+    expect(chipLabel({ m: 9 * 9, tags: [] }, 9)).toBe('PASS');
+    expect(chipLabel({ m: 15 * 15, tags: [] }, 15)).toBe('PASS'); // Renju (gridSizeForGame 31/32/81)
+  });
+
+  test('a 13x13 game (id 23) with a pass node renders "PASS" instead of crashing', () => {
+    const { tree } = addMove(createTree(), [], 13 * 13); // 169 = pass sentinel for a 13-board
+    const store = makeStore(tree, [], 23);
+    expect(() => renderWith(store, <TreeView />)).not.toThrow();
+    expect(screen.getByText('PASS')).toBeTruthy();
+  });
+
+  test('a Renju game (id 31, 15x15) with a pass node renders "PASS" instead of crashing', () => {
+    const { tree } = addMove(createTree(), [], 15 * 15); // 225 = pass sentinel for a 15-board
+    const store = makeStore(tree, [], 31); // game 31 -> gridSizeForGame = 15 (Renju)
+    expect(() => renderWith(store, <TreeView />)).not.toThrow();
+    expect(screen.getByText('PASS')).toBeTruthy();
+  });
 });
 
 // --- TagBar --------------------------------------------------------------------

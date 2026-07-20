@@ -235,6 +235,17 @@ describe('StatsRows helpers', () => {
     expect(moveLabel(40, 9)).toBe('E5'); // 9-board centre (matches real Go 9x9 notation)
     expect(moveLabel(null, 13)).toBe('');
   });
+
+  // Pass-move regression: the pass sentinel is gridSize*gridSize (GameClass — Go AND Renju
+  // share it; Renju passes are a shipped, DB-persisted feature). Before this fix, the
+  // consolidated moveLabel (delegating straight to cellToAlpha) would throw RangeError on the
+  // sentinel -> render CRASH. It must render "PASS" instead, at every real board size.
+  test('moveLabel renders "PASS" for the pass sentinel instead of throwing, at every board size', () => {
+    expect(moveLabel(19 * 19, 19)).toBe('PASS');
+    expect(moveLabel(13 * 13, 13)).toBe('PASS');
+    expect(moveLabel(9 * 9, 9)).toBe('PASS');
+    expect(moveLabel(15 * 15, 15)).toBe('PASS'); // Renju (gridSizeForGame 31/32/81)
+  });
 });
 
 describe('StatsRows — interaction', () => {

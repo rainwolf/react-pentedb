@@ -347,6 +347,29 @@ describe('MoveStrip', () => {
     expect(screen.getByText('G7')).toBeTruthy();
     expect(screen.queryByText('J15')).toBeNull(); // would appear if 19 were used instead
   });
+
+  // Pass-move regression: the pass sentinel is gridSize*gridSize (GameClass — Go AND Renju
+  // share it; Renju passes are a shipped, DB-persisted feature via CollectionList/fromWire).
+  // Before this fix, cellToAlpha(m, size) threw RangeError on the sentinel -> render CRASH.
+  // moveLabel must render "PASS" instead, at every real board size including Renju's 15.
+  test('moveLabel renders "PASS" for the pass sentinel instead of throwing, at every board size', () => {
+    expect(moveLabel(19 * 19)).toBe('PASS'); // default size 19
+    expect(moveLabel(13 * 13, 13)).toBe('PASS');
+    expect(moveLabel(9 * 9, 9)).toBe('PASS');
+    expect(moveLabel(15 * 15, 15)).toBe('PASS'); // Renju (gridSizeForGame 31/32/81)
+  });
+
+  test('a 13x13 game (id 23) with a pass move renders "PASS" instead of crashing', () => {
+    const store = makeStore([13 * 13], [0], 23); // 169 = pass sentinel for a 13-board
+    expect(() => renderWith(store, <MoveStrip />)).not.toThrow();
+    expect(screen.getByText('PASS')).toBeTruthy();
+  });
+
+  test('a Renju game (id 31, 15x15) with a pass move renders "PASS" instead of crashing', () => {
+    const store = makeStore([15 * 15], [0], 31); // game 31 -> gridSizeForGame = 15 (Renju)
+    expect(() => renderWith(store, <MoveStrip />)).not.toThrow();
+    expect(screen.getByText('PASS')).toBeTruthy();
+  });
 });
 
 describe('capture counter', () => {
