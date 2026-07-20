@@ -18,7 +18,10 @@ import reducer, {
   markSaved,
   selectActivePosition,
 } from './docSlice';
-import { createTree, addMove } from './gameTree';
+import { createTree, addMove, mainline } from './gameTree';
+// The dependency-free leaf both game openers use (search/ResultsList row-click and the
+// /g/:gid route loader) to turn a fetched move list into a tree + end-of-game cursor path.
+import { buildTreeFromMoves } from '../shell/gameTab';
 
 const init = () => reducer(undefined, { type: '@@INIT' });
 const active = (s) => s.tabs.find((t) => t.id === s.activeTabId);
@@ -151,5 +154,60 @@ describe('selectActivePosition', () => {
     let s = init();
     s = reducer(s, openTab({ id: 't', kind: 'analysis', title: 'A', game: 3, tree: linearTree(), cursorPath: [0, 0] }));
     expect(selectActivePosition({ docs: s })).toEqual({ game: 3, moves: [100, 101], cursorPath: [0, 0] });
+  });
+});
+
+// FB7 regression: a loaded game must open showing its FULL line and be navigable through every
+// move — the user report was "only the 1st move shows / can't navigate through the game". This
+// encodes that acceptance at the STATE level using the SAME helper both openers use
+// (search/ResultsList row-click and the /g/:gid route loader): buildTreeFromMoves -> openTab
+// with cursorPath = the END-of-game path. The fixture is a REAL archived pente game
+// (gid 50000000730774) and deliberately includes capture-replayed cells — 141 and 159 each
+// appear twice, non-consecutively — to prove the line stays a full N-node mainline and is not
+// collapsed by addMove's same-node dedup into a truncated 1-deep tree.
+describe('loaded game opens at the full line and navigates (FB7)', () => {
+  const REAL_MOVES = [180, 105, 104, 123, 140, 141, 87, 177, 159, 121, 161, 178, 101, 141, 159, 176, 175];
+
+  function openLoadedGame() {
+    const { tree, path } = buildTreeFromMoves(REAL_MOVES);
+    let s = init();
+    s = reducer(
+      s,
+      openTab({ id: 'g:730774', kind: 'game', title: 'orsim vs julierenee', game: 1, gid: 730774, tree, cursorPath: path })
+    );
+    return s;
+  }
+
+  test('the tab tree mainline has one node per move (not a truncated 1-deep tree)', () => {
+    const s = openLoadedGame();
+    expect(mainline(active(s).tree)).toEqual(REAL_MOVES);
+  });
+
+  test('opens at the END: selectActivePosition reports the full move line', () => {
+    const pos = selectActivePosition({ docs: openLoadedGame() });
+    expect(pos.moves).toEqual(REAL_MOVES);
+    expect(pos.cursorPath).toHaveLength(REAL_MOVES.length);
+  });
+
+  test('navPrev / navFirst / navLast / navNext step through every move', () => {
+    let s = openLoadedGame();
+    // one step back drops exactly the last move
+    s = reducer(s, navPrev);
+    expect(selectActivePosition({ docs: s }).moves).toEqual(REAL_MOVES.slice(0, -1));
+    // Home -> empty board
+    s = reducer(s, navFirst);
+    expect(selectActivePosition({ docs: s }).moves).toEqual([]);
+    // stepping forward move-by-move reconstructs the whole line one stone at a time
+    for (let i = 1; i <= REAL_MOVES.length; i++) {
+      s = reducer(s, navNext);
+      expect(selectActivePosition({ docs: s }).moves).toEqual(REAL_MOVES.slice(0, i));
+    }
+    // at the leaf navNext is a no-op (no kids to descend)
+    s = reducer(s, navNext);
+    expect(selectActivePosition({ docs: s }).moves).toEqual(REAL_MOVES);
+    // End jumps straight back to the full line from anywhere
+    s = reducer(s, navFirst);
+    s = reducer(s, navLast);
+    expect(selectActivePosition({ docs: s }).moves).toEqual(REAL_MOVES);
   });
 });
