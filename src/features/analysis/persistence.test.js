@@ -247,6 +247,64 @@ describe('AnalysesList', () => {
     expect(mainline(t.tree)).toEqual([180, 199]);
   });
 
+  // FB2 sibling regression: opening a SECOND analysis. RTK Query keeps the previously-opened
+  // analysis's result in `data` while the new aid is still fetching, so the openTab effect used
+  // to fire on that STALE object — opening an a:<new> tab with the OLD analysis's name and tree,
+  // then cancelling the real fetch. The fix waits until the fetched response's own aid matches.
+  test('opening a second analysis while RTK still holds the first analysis’s data loads the CLICKED one', async () => {
+    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest' }, refetch: vi.fn() });
+    useAnalysesQuery.mockReturnValue({
+      data: {
+        analyses: [
+          { aid: 7, name: 'Alpha line', game: 1, updated: 0 },
+          { aid: 9, name: 'Beta line', game: 1, updated: 0 },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+    const DATA_A = { aid: 7, name: 'Alpha line', game: 1, tree: toWire(treeWith([180, 199])) };
+    const DATA_B = { aid: 9, name: 'Beta line', game: 1, tree: toWire(treeWith([100, 101, 102])) };
+
+    // Model the stale read: while aid 9 is in flight, the hook hands back analysis A's data
+    // (isFetching:true); only once `bResolved` flips does 9 return its OWN tree.
+    let bResolved = false;
+    useAnalysisQuery.mockImplementation((aid, opts) => {
+      if (opts && opts.skip) return { data: undefined };
+      if (aid === 9) return bResolved ? { data: DATA_B, isFetching: false } : { data: DATA_A, isFetching: true };
+      return { data: DATA_A, isFetching: false };
+    });
+
+    const store = makeStore();
+    // A fresh element each render: rerender(sameElementRef) makes React bail out, so the mock
+    // would never advance to B.
+    const ui = () => (
+      <Provider store={store}>
+        <ThemeProvider theme={theme}>
+          <AnalysesList />
+        </ThemeProvider>
+      </Provider>
+    );
+    const { rerender } = render(ui());
+
+    // Click B while its fetch is "in flight" (data is still A's).
+    fireEvent.click(screen.getByText('Beta line'));
+    // B's real tree arrives.
+    bResolved = true;
+    rerender(ui());
+
+    await waitFor(() => expect(store.getState().docs.tabs.some((t) => t.id === 'a:9')).toBe(true));
+    const bTabs = store.getState().docs.tabs.filter((t) => t.id === 'a:9');
+    expect(bTabs).toHaveLength(1); // exactly ONE a:9 tab, no junk/duplicate
+    expect(bTabs[0].title).toBe('Beta line'); // B's name, NOT A's ('Alpha line')
+    expect(mainline(bTabs[0].tree)).toEqual([100, 101, 102]); // B's tree, NOT A's [180,199]
+    expect(store.getState().docs.activeTabId).toBe('a:9');
+
+    // Clicking B again reuses the same tab (no duplicate).
+    fireEvent.click(screen.getByText('Beta line'));
+    expect(store.getState().docs.tabs.filter((t) => t.id === 'a:9')).toHaveLength(1);
+  });
+
   test('delete asks to confirm, then calls the delete mutation with the aid', async () => {
     usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest' }, refetch: vi.fn() });
     useAnalysesQuery.mockReturnValue({

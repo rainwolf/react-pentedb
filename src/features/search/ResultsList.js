@@ -71,6 +71,7 @@ export default function ResultsList({ game, scope, filters, moves }) {
   useEffect(() => {
     setOffset(0);
     setScrollTop(0);
+    setOpenError(null); // a stale failed-open error must not linger across a new search
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game, scope, filters, movesKey]);
 

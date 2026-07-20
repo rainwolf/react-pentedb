@@ -49,24 +49,38 @@ export default function AnalysesList() {
   const [deleteAnalysis, { isLoading: deleting }] = useDeleteAnalysisMutation();
   const [confirm, setConfirm] = useState(null); // { aid, name } pending deletion
   const [openingAid, setOpeningAid] = useState(null); // aid whose tree is being fetched to open
+  const [openError, setOpenError] = useState(null); // a failed open (404/500/etc.) to surface
   const openingQuery = useAnalysisQuery(openingAid, { skip: openingAid == null });
 
-  // Once the requested analysis has loaded, open (or re-activate) its tab, then reset.
+  // Open (or re-activate) the clicked analysis's tab once ITS OWN tree has loaded. Same
+  // stale-read guard as search/ResultsList: RTK Query keeps the PREVIOUSLY-opened analysis in
+  // `data` while a new aid is still fetching, so opening on `data` alone would build an
+  // a:<new> tab carrying the prior analysis's name/tree (and then setOpeningAid(null) cancels
+  // the real fetch, so it never recovers). Gate on the response's own aid (GET /analyses/{aid}
+  // returns {aid,name,game,tree}) matching openingAid, and !isFetching.
   useEffect(() => {
-    if (openingAid == null || !openingQuery.data) return;
+    if (openingAid == null) return;
     const id = `a:${openingAid}`;
-    const existing = tabs.find((t) => t.id === id);
-    if (existing) {
-      dispatch(activateTab(id));
-    } else {
-      const d = openingQuery.data;
-      dispatch(
-        openTab({ id, kind: 'analysis', title: d.name, game: d.game, aid: openingAid, tree: fromWire(d.tree) })
-      );
+    if (tabs.some((t) => t.id === id)) {
+      dispatch(activateTab(id)); // store-first dedup: reuse the existing a:<aid> tab
+      setOpeningAid(null);
+      return;
     }
+    if (openingQuery.isError) {
+      setOpenError(openingQuery.error); // surface 404/500/etc. instead of spinning forever
+      setOpeningAid(null);
+      return;
+    }
+    const d = openingQuery.data;
+    if (openingQuery.isFetching || !d || d.aid !== openingAid) {
+      return; // still fetching, or `data` is the PREVIOUS analysis's — wait for THIS aid
+    }
+    dispatch(
+      openTab({ id, kind: 'analysis', title: d.name, game: d.game, aid: openingAid, tree: fromWire(d.tree) })
+    );
     setOpeningAid(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openingAid, openingQuery.data]);
+  }, [openingAid, openingQuery.data, openingQuery.isFetching, openingQuery.isError]);
 
   const handleOpen = (aid) => {
     const id = `a:${aid}`;
@@ -74,6 +88,7 @@ export default function AnalysesList() {
       dispatch(activateTab(id));
       return;
     }
+    setOpenError(null); // clear any prior failed-open before starting a new one
     setOpeningAid(aid);
   };
 
@@ -113,7 +128,7 @@ export default function AnalysesList() {
           <CircularProgress size={18} />
         </Box>
       )}
-      <PanelError error={error} />
+      <PanelError error={error || openError} />
       {!isLoading && !isError && analyses.length === 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1 }}>
           No saved analyses yet.

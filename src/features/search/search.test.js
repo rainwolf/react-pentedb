@@ -444,7 +444,7 @@ describe('row click opens a game tab at the final position', () => {
 
   test('a failed game fetch surfaces an error instead of spinning forever', () => {
     useGamesSearchQuery.mockReturnValue({ data: { total: 1, games: [HEADER] }, isFetching: false });
-    useGameQuery.mockImplementation((gid, opts) =>
+    useGameQuery.mockImplementation((_gid, opts) =>
       opts && opts.skip
         ? { data: undefined }
         : { data: undefined, isError: true, error: { status: 500, data: { error: { message: 'game boom' } } } }
