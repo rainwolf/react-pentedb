@@ -34,15 +34,23 @@ vi.mock('../../app/api', () => ({
 // eslint-disable-next-line import/first
 import { usePositionStatsQuery, useGamesSearchQuery, useGameQuery, usePingQuery } from '../../app/api';
 // eslint-disable-next-line import/first
-import uiReducer from '../../app/uiSlice';
+import uiReducer, {
+  setRotation,
+  setHeatOnBoard,
+  setHeatHoverCell,
+  selectHeatOnBoard,
+  selectHeatHoverCell,
+} from '../../app/uiSlice';
 // eslint-disable-next-line import/first
-import heatScale from './heatScale';
+import heatColor, { heatDomain, heatT } from './heatScale';
 // eslint-disable-next-line import/first
 import useDebouncedPosition from './useDebouncedPosition';
 // eslint-disable-next-line import/first
 import StatsRows, { sortedRows, totalsRow, moveLabel } from './StatsRows';
 // eslint-disable-next-line import/first
 import HeatOverlay from './HeatOverlay';
+// eslint-disable-next-line import/first
+import BoardHeatOverlay from './BoardHeatOverlay';
 // eslint-disable-next-line import/first
 import ExplorerPanel from './ExplorerPanel';
 // eslint-disable-next-line import/first
@@ -106,38 +114,84 @@ function makeScopedStore(scope) {
   return store;
 }
 
+// A store shaped like the real app store: docs + ui + a stand-in `api` slice. BoardHeatOverlay
+// only fires the (mocked) position-stats query when an `api` slice is present, so the docs+ui
+// stores the viewer/threats tests build stay inert. A no-op reducer with a stable identity is
+// enough for the presence check.
+const apiStub = (s = {}) => s;
+function makeBoardStore(moves = [180], rotation = 0) {
+  const store = configureStore({ reducer: { docs: docsReducer, ui: uiReducer, api: apiStub } });
+  const { tree } = treeFromLine(moves);
+  store.dispatch(openTab({ id: 't', kind: 'scratch', title: 'T', game: 1, tree, cursorPath: [0] }));
+  if (rotation) store.dispatch(setRotation(rotation));
+  return store;
+}
+
 afterEach(() => {
   cleanup();
 });
 
 // ===================================================================================
-// heatScale — deterministic sequential ramp, safe/identical in both themes
+// heatColor / heatT / heatDomain — green→red RELATIVE heat, matching the mobile DB apps
+// (pentelive-android DatabaseActivity + penteLive-iOS DatabaseViewController): a min-max
+// normalized red→yellow→green lerp across the displayed candidate set.
 // ===================================================================================
-describe('heatScale', () => {
-  test('returns three distinct colors for 0 / 50 / 100', () => {
-    const set = new Set([heatScale(0), heatScale(50), heatScale(100)]);
-    expect(set.size).toBe(3);
+describe('heatColor — green→red ramp (t: 0→red, 0.5→yellow, 1→green)', () => {
+  test('endpoints: t=0 pure red, t=0.5 yellow, t=1 pure green', () => {
+    expect(heatColor(0)).toBe('rgb(255, 0, 0)');
+    expect(heatColor(0.5)).toBe('rgb(255, 255, 0)');
+    expect(heatColor(1)).toBe('rgb(0, 255, 0)');
   });
 
-  test('is deterministic: identical input → identical output', () => {
-    expect(heatScale(37)).toBe(heatScale(37));
-    expect(heatScale(0)).toBe(heatScale(0));
+  test('is deterministic and clamps out-of-range t to the endpoints', () => {
+    expect(heatColor(0.37)).toBe(heatColor(0.37));
+    expect(heatColor(-1)).toBe(heatColor(0));
+    expect(heatColor(2)).toBe(heatColor(1));
   });
 
-  test('clamps out-of-range win% to the 0..100 endpoints', () => {
-    expect(heatScale(-20)).toBe(heatScale(0));
-    expect(heatScale(150)).toBe(heatScale(100));
+  test('null / NaN t yields a neutral (no-data) color, distinct from the ramp ends', () => {
+    const neutral = heatColor(null);
+    expect(neutral).toBe(heatColor(undefined));
+    expect(neutral).not.toBe(heatColor(0));
+    expect(neutral).not.toBe(heatColor(1));
+  });
+});
+
+describe('heatT / heatDomain — relative normalization over the displayed set', () => {
+  // NEXT_MOVES win% = [60, 30, 100] → domain {min:30, max:100}.
+  const dom = heatDomain(NEXT_MOVES.map((m) => m.winPct));
+
+  test('heatDomain is the min/max of the displayed win% values', () => {
+    expect(dom).toEqual({ min: 30, max: 100 });
   });
 
-  test('a missing win% yields a neutral (no-data) color, distinct from the ramp ends', () => {
-    const neutral = heatScale(null);
-    expect(neutral).toBe(heatScale(undefined));
-    expect(neutral).not.toBe(heatScale(0));
-    expect(neutral).not.toBe(heatScale(100));
+  test('best move in the set → t=1 (green), worst → t=0 (red)', () => {
+    expect(heatT(100, dom)).toBe(1);
+    expect(heatT(30, dom)).toBe(0);
+    expect(heatColor(heatT(100, dom))).toBe('rgb(0, 255, 0)');
+    expect(heatColor(heatT(30, dom))).toBe('rgb(255, 0, 0)');
+  });
+
+  test('a mid-set value lands strictly between the poles', () => {
+    const t = heatT(60, dom);
+    expect(t).toBeGreaterThan(0);
+    expect(t).toBeLessThan(1);
+  });
+
+  test('max===min fallback: domain treated as 0..100 (t = value/100)', () => {
+    expect(heatT(50, { min: 50, max: 50 })).toBe(0.5);
+    expect(heatColor(heatT(50, heatDomain([50])))).toBe('rgb(255, 255, 0)');
+    expect(heatT(100, { min: 20, max: 20 })).toBe(1); // 100/100
+    expect(heatT(0, { min: 20, max: 20 })).toBe(0);
+  });
+
+  test('null / undefined win% → t is null (rendered as no-data)', () => {
+    expect(heatT(null, dom)).toBeNull();
+    expect(heatT(undefined, dom)).toBeNull();
   });
 
   test('the rendered heat is identical under light and dark themes (theme-independent)', () => {
-    const cells = [{ move: 180, winPct: 50 }];
+    const cells = [{ move: 180, winPct: 50 }]; // singleton set → domain {50,50} → t=0.5 → yellow
     const light = createTheme({ palette: { mode: 'light' } });
     const dark = createTheme({ palette: { mode: 'dark' } });
     const { container: cl } = render(
@@ -154,7 +208,7 @@ describe('heatScale', () => {
     );
     const darkFill = cd.querySelector('circle').getAttribute('fill');
     expect(lightFill).toBe(darkFill);
-    expect(lightFill).toBe(heatScale(50));
+    expect(lightFill).toBe(heatColor(0.5));
   });
 });
 
@@ -282,12 +336,35 @@ describe('HeatOverlay', () => {
     { move: 200, winPct: 80 },
   ];
 
-  test('renders one ghost per candidate, filled by heatScale(winPct)', () => {
+  test('renders one ghost per candidate, colored by RELATIVE heat over the shown set', () => {
     const { container } = renderWith(makeStore(), <HeatOverlay cells={CELLS} gridSize={N} rotation={0} />);
     const circles = container.querySelectorAll('circle');
     expect(circles.length).toBe(2);
-    const c180 = container.querySelector('circle[data-canonical="180"]');
-    expect(c180.getAttribute('fill')).toBe(heatScale(50));
+    const dom = heatDomain(CELLS.map((c) => c.winPct)); // {min:50, max:80}
+    // worst-of-set (50) reads pure red; best-of-set (80) reads pure green.
+    expect(container.querySelector('circle[data-canonical="180"]').getAttribute('fill')).toBe(
+      heatColor(heatT(50, dom))
+    );
+    expect(container.querySelector('circle[data-canonical="180"]').getAttribute('fill')).toBe('rgb(255, 0, 0)');
+    expect(container.querySelector('circle[data-canonical="200"]').getAttribute('fill')).toBe('rgb(0, 255, 0)');
+  });
+
+  test('the hovered candidate is highlighted MUCH brighter than the ambient heat', () => {
+    const { container } = renderWith(
+      makeStore(),
+      <HeatOverlay cells={CELLS} gridSize={N} rotation={0} hoverCell={200} />
+    );
+    const hovered = container.querySelector('circle[data-canonical="200"]');
+    const ambient = container.querySelector('circle[data-canonical="180"]');
+    expect(hovered.getAttribute('data-hover')).toBe('true');
+    expect(ambient.getAttribute('data-hover')).toBe('false');
+    // full-opacity fill vs a dim ambient disc
+    expect(Number(hovered.getAttribute('fill-opacity'))).toBe(1);
+    expect(Number(ambient.getAttribute('fill-opacity'))).toBeLessThan(1);
+    // a bright white high-contrast outline on the hovered cell
+    expect(hovered.getAttribute('stroke').toLowerCase()).toBe('#ffffff');
+    // ...and a dedicated bright ring marker that pops the cell out
+    expect(container.querySelector('[data-testid="heat-hover-ring"]')).toBeTruthy();
   });
 
   test('at rotation 0 a ghost sits on its canonical cell', () => {
@@ -355,6 +432,106 @@ describe('ExplorerPanel', () => {
     usePingQuery.mockReturnValue({ data: { auth: null } });
     renderWith(makeScopedStore('mine'), <ExplorerPanel />);
     expect(usePositionStatsQuery.mock.calls.at(-1)[0].scope).toBe('archive');
+  });
+
+  test('renders a "show heat on board" toggle (default ON) wired to the ui slice', () => {
+    const store = configureStore({ reducer: { docs: docsReducer, ui: uiReducer } });
+    const { tree } = treeFromLine([180]);
+    store.dispatch(openTab({ id: 't', kind: 'scratch', title: 'T', game: 1, tree, cursorPath: [0] }));
+    renderWith(store, <ExplorerPanel />);
+    const toggle = screen.getByTestId('heat-on-board-toggle');
+    expect(toggle.checked).toBe(true); // overlaid by default; the toggle turns it OFF
+    fireEvent.click(toggle);
+    expect(selectHeatOnBoard(store.getState())).toBe(false);
+  });
+
+  test('hovering a stats row lifts the canonical hover cell into the ui slice (drives the board)', () => {
+    const store = configureStore({ reducer: { docs: docsReducer, ui: uiReducer } });
+    const { tree } = treeFromLine([180]);
+    store.dispatch(openTab({ id: 't', kind: 'scratch', title: 'T', game: 1, tree, cursorPath: [0] }));
+    renderWith(store, <ExplorerPanel />);
+    fireEvent.mouseEnter(screen.getByTestId('stats-row-200'));
+    expect(selectHeatHoverCell(store.getState())).toBe(200);
+    fireEvent.mouseLeave(screen.getByTestId('stats-row-200'));
+    expect(selectHeatHoverCell(store.getState())).toBeNull();
+  });
+});
+
+// ===================================================================================
+// BoardHeatOverlay — the green→red heat overlaid on the REAL board, driven by the ui
+// toggle + shared hover cell + shared board rotation. Reuses HeatOverlay (rotation-aware).
+// ===================================================================================
+describe('BoardHeatOverlay', () => {
+  test('toggle ON + stats present: renders a ghost per candidate, rotation-aware', () => {
+    const store = makeBoardStore([180], 1); // shared board rotation 1
+    const { container } = renderWith(store, <BoardHeatOverlay />);
+    const circles = container.querySelectorAll('[data-testid="heat-overlay"] circle');
+    expect(circles.length).toBe(NEXT_MOVES.length);
+    // rotation-aware: a candidate sits at symCell(canonical, rotation), NOT the canonical cell.
+    const c = container.querySelector('circle[data-canonical="240"]');
+    expect(c.getAttribute('data-cell')).toBe(String(symCell(240, 1, N)));
+  });
+
+  test('toggle OFF: renders nothing AND fires no position-stats network query (skip)', () => {
+    const store = makeBoardStore([180]);
+    store.dispatch(setHeatOnBoard(false));
+    usePositionStatsQuery.mockClear();
+    const { container } = renderWith(store, <BoardHeatOverlay />);
+    expect(container.querySelector('[data-testid="heat-overlay"]')).toBeNull();
+    // if the query hook ran at all, it must have been skipped (no request issued)
+    const call = usePositionStatsQuery.mock.calls.at(-1);
+    if (call) expect(call[1]).toEqual(expect.objectContaining({ skip: true }));
+  });
+
+  test('no api slice (bare docs+ui store): renders nothing, never touches the query hook', () => {
+    const bare = configureStore({ reducer: { docs: docsReducer, ui: uiReducer } });
+    const { tree } = treeFromLine([180]);
+    bare.dispatch(openTab({ id: 't', kind: 'scratch', title: 'T', game: 1, tree, cursorPath: [0] }));
+    usePositionStatsQuery.mockClear();
+    const { container } = renderWith(bare, <BoardHeatOverlay />);
+    expect(container.querySelector('[data-testid="heat-overlay"]')).toBeNull();
+    expect(usePositionStatsQuery).not.toHaveBeenCalled();
+  });
+
+  test('shared hover cell (ui slice) brightly highlights that candidate on the board', () => {
+    const store = makeBoardStore([180]);
+    store.dispatch(setHeatHoverCell(240));
+    const { container } = renderWith(store, <BoardHeatOverlay />);
+    const hovered = container.querySelector('circle[data-canonical="240"]');
+    expect(hovered.getAttribute('data-hover')).toBe('true');
+    expect(Number(hovered.getAttribute('fill-opacity'))).toBe(1);
+    expect(container.querySelector('[data-testid="heat-hover-ring"]')).toBeTruthy();
+  });
+});
+
+// ===================================================================================
+// uiSlice — heat-on-board toggle + shared hover cell
+// ===================================================================================
+describe('uiSlice — heat toggle + hover cell', () => {
+  test('heatOnBoard defaults ON; setHeatOnBoard flips it; selector reads it', () => {
+    const store = configureStore({ reducer: { ui: uiReducer } });
+    expect(selectHeatOnBoard(store.getState())).toBe(true);
+    store.dispatch(setHeatOnBoard(false));
+    expect(selectHeatOnBoard(store.getState())).toBe(false);
+    store.dispatch(setHeatOnBoard(true));
+    expect(selectHeatOnBoard(store.getState())).toBe(true);
+  });
+
+  test('selectHeatOnBoard defaults to true even on a store without the ui slice', () => {
+    expect(selectHeatOnBoard({})).toBe(true);
+  });
+
+  test('heatHoverCell round-trips through setHeatHoverCell (number and null)', () => {
+    const store = configureStore({ reducer: { ui: uiReducer } });
+    expect(selectHeatHoverCell(store.getState())).toBeNull();
+    store.dispatch(setHeatHoverCell(240));
+    expect(selectHeatHoverCell(store.getState())).toBe(240);
+    store.dispatch(setHeatHoverCell(null));
+    expect(selectHeatHoverCell(store.getState())).toBeNull();
+  });
+
+  test('selectHeatHoverCell defaults to null on a store without the ui slice', () => {
+    expect(selectHeatHoverCell({})).toBeNull();
   });
 });
 

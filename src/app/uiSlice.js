@@ -43,10 +43,23 @@ const EMPTY_THREATS = Object.freeze(defaultThreats());
 
 const uiSlice = createSlice({
   name: 'ui',
-  initialState: { scope: 'archive', rotation: 0, threats: defaultThreats() },
+  // `heatOnBoard` (explorer feedback rework): the green→red candidate heat is overlaid on the
+  // REAL board by default; the ExplorerPanel switch turns it OFF. `heatHoverCell` is the shared
+  // canonical hover cell — StatsRows onHover writes it, BoardHeatOverlay reads it — so hovering a
+  // stats row lights that exact cell up brightly on the board.
+  initialState: { scope: 'archive', rotation: 0, threats: defaultThreats(), heatOnBoard: true, heatHoverCell: null },
   reducers: {
     setScope(state, action) {
       if (SCOPES.includes(action.payload)) state.scope = action.payload;
+    },
+    // Show / hide the candidate heat overlay on the real board.
+    setHeatOnBoard(state, action) {
+      state.heatOnBoard = !!action.payload;
+    },
+    // Shared hover cell (canonical) coupling the stats list to the board heat. null clears it.
+    setHeatHoverCell(state, action) {
+      const v = action.payload;
+      state.heatHoverCell = v == null ? null : Number(v);
     },
     // Set the board view orientation. Normalized into 0..7 so callers can pass a raw
     // "current + 1" without worrying about wraparound or a stray non-integer.
@@ -65,7 +78,7 @@ const uiSlice = createSlice({
   },
 });
 
-export const { setScope, setRotation, setThreatToggle } = uiSlice.actions;
+export const { setScope, setRotation, setThreatToggle, setHeatOnBoard, setHeatHoverCell } = uiSlice.actions;
 
 // Defensive read: some tests build stores without the ui slice (docs-only reducers), so fall
 // back to 'archive' rather than crash when `state.ui` is absent.
@@ -84,6 +97,20 @@ export function selectRotation(state) {
 // a fresh object) so the fallback is referentially stable across renders.
 export function selectThreatToggles(state) {
   return (state.ui && state.ui.threats) || EMPTY_THREATS;
+}
+
+// Defensive: absent ui slice OR a store predating this flag → true. The heat is overlaid by
+// default (the user wants it on the board); only an explicit `false` from the toggle hides it.
+export function selectHeatOnBoard(state) {
+  const ui = state && state.ui;
+  return ui && ui.heatOnBoard === false ? false : true;
+}
+
+// Defensive: absent ui slice → null. Cell 0 is a valid board cell, so test against null (not
+// falsiness) to avoid dropping a legitimate top-left hover.
+export function selectHeatHoverCell(state) {
+  const ui = state && state.ui;
+  return ui && ui.heatHoverCell != null ? ui.heatHoverCell : null;
 }
 
 // The EFFECTIVE scope every consumer must query with. mine/both require auth, so a lapsed

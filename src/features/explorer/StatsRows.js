@@ -10,7 +10,7 @@
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
-import heatScale from './heatScale';
+import { heatColor, heatDomain, heatT } from './heatScale';
 import { formatMove } from '../../export/coords';
 
 // Flat cell (cell = y*n + x) → board coordinate, e.g. centre of 19x19 → "K10". Delegates to
@@ -34,17 +34,21 @@ export function totalsRow(nextMoves = []) {
   return { games, wins, winPct };
 }
 
-function WinBar({ winPct }) {
+// The bar WIDTH shows the absolute win rate; the bar COLOR is the green→red RELATIVE heat,
+// normalized across the shown rows (via `domain`) so the list agrees with the board overlay.
+function WinBar({ winPct, domain }) {
   const pct = Math.max(0, Math.min(100, Number(winPct) || 0));
   return (
     <Box sx={{ position: 'relative', height: 8, borderRadius: 1, bgcolor: 'action.hover', overflow: 'hidden' }}>
-      <Box sx={{ position: 'absolute', inset: 0, width: `${pct}%`, bgcolor: heatScale(pct) }} />
+      <Box sx={{ position: 'absolute', inset: 0, width: `${pct}%`, bgcolor: heatColor(heatT(winPct, domain)) }} />
     </Box>
   );
 }
 
 export default function StatsRows({ rows = [], gridSize = 19, onSelect = () => {}, onHover = () => {} }) {
   const totals = totalsRow(rows);
+  // Same normalization as HeatOverlay / BoardHeatOverlay: min→red, max→green over this set.
+  const domain = heatDomain(rows.map((r) => r.winPct));
 
   return (
     <Box role="table" aria-label="Candidate moves" sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -91,7 +95,7 @@ export default function StatsRows({ rows = [], gridSize = 19, onSelect = () => {
             {r.games ?? 0}
           </Typography>
           <Box sx={{ flex: 1 }}>
-            <WinBar winPct={r.winPct} />
+            <WinBar winPct={r.winPct} domain={domain} />
           </Box>
           <Typography variant="body2" sx={{ width: 44, textAlign: 'right' }}>
             {r.winPct != null ? `${r.winPct}%` : '—'}
@@ -125,7 +129,7 @@ export default function StatsRows({ rows = [], gridSize = 19, onSelect = () => {
           {totals.games}
         </Typography>
         <Box sx={{ flex: 1 }}>
-          <WinBar winPct={totals.winPct} />
+          <WinBar winPct={totals.winPct} domain={domain} />
         </Box>
         <Typography variant="body2" sx={{ width: 44, textAlign: 'right', fontWeight: 600 }}>
           {totals.winPct}%

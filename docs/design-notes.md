@@ -15,6 +15,23 @@ already emits.
 
 ## 1. Heat ramp — `heatScale.js`
 
+> **OVERRIDE (explorer feedback rework, 2026-07).** The ramp below was **reversed on the
+> user's explicit direction** to a **green→red relative scale that matches their mobile DB
+> apps** (`pentelive-android` `DatabaseActivity.java:723-735`, `penteLive-iOS`
+> `DatabaseViewController.m:899-916`). The new ramp min-max **normalizes each shown move
+> across the currently displayed candidate set** (`t=(v-min)/(max-min)`; `max==min → t=v/100`)
+> then lerps **red→yellow→green** (`t≤0.5 → rgb(255,round(t·510),0)`, `t>0.5 →
+> rgb(round((1-t)·510),255,0)`): worst-of-set = pure red, best = pure green, midpoint yellow.
+> That relative stretch is what makes the heat distinctive, and it is now overlaid on the REAL
+> board (`BoardHeatOverlay`), not a mini-preview. `heatScale.js` now exports pure
+> `heatColor(t)` + `heatDomain(values)` + `heatT(value, domain)`; StatsRows, HeatOverlay and
+> BoardHeatOverlay all normalize over the SAME shown set so the list and the board agree.
+> **This knowingly abandons the CVD-safe pair below and reintroduces the red↔green colourblind
+> ambiguity** — the tradeoff was raised and **accepted by explicit user request** (product
+> parity with their apps), so it is intentional, not a regression. The CVD-safe rationale below
+> is retained as historical context for whoever revisits this decision.
+
+
 `heatScale(winPct)` maps a candidate move's win% (0–100) to a fill for the explorer / AI-ghost
 overlay. The Phase-2 placeholder was a **red ↔ green** lerp — the textbook colourblind trap.
 Replaced using the dataviz skill's method (form → colour → *validate with the script*).

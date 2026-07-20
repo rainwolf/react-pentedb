@@ -1,49 +1,61 @@
-// heatScale — a DETERMINISTIC ramp mapping a win% (0..100) to a heat color for the
-// candidate-move overlay. Cold → hot: a losing continuation reads cold (deep blue), an
-// even one reads neutral (dark umber), a winning one reads hot (deep vermillion).
+// heatScale — the explorer's candidate-move heat, a green→red RELATIVE ramp that mirrors the
+// pente.org mobile database apps EXACTLY (pentelive-android DatabaseActivity.java:723-735 and
+// penteLive-iOS DatabaseViewController.m:899-916). Both apps min-max normalize each shown
+// move's value across the CURRENTLY DISPLAYED candidate set, then lerp red→yellow→green:
 //
-// PALETTE (Phase 4 design pass — replaces the Phase-2 red↔green placeholder, which used the
-// classic colorblind-unsafe red/green pair). Chosen with the dataviz skill's method:
-//   - win% is diverging around 50% (even), so the ramp has two poles + a neutral midpoint.
-//   - The poles are the ColorBrewer / Okabe–Ito cool→warm CVD-safe pair (blue ↔ vermillion),
-//     so protanopes, deuteranopes and tritanopes all keep the low/high distinction.
-//   - Every step is kept DARK (low luminance) so the whole ramp clears ≥3:1 WCAG contrast
-//     against ALL thirteen board felts — worst case is the renju rose felt (#D98880) at
-//     3.68:1, comfortably over the ≥3:1 target (the placeholder failed that felt).
-//   - It is THEME-INDEPENDENT: identical input yields identical color in light and dark app
-//     mode, so toggling the theme or rotating the board never shifts a cell's heat.
-//   - Distinct from the other board overlays by BOTH hue and form: the heat layer is solid
-//     discs, the AI ghost is a bright dashed violet ring, threat bands are thin translucent
-//     blue/orange lines. (See docs/design-notes.md for the full rationale + contrast table.)
+//   t = (value - min) / (max - min)            over the displayed set
+//   if max == min  →  t = value / 100          (domain treated as 0..100)
+//   t <= 0.5  →  rgb(255, round(t*510), 0)      (red → yellow)
+//   t >  0.5  →  rgb(round((1-t)*510), 255, 0)  (yellow → green)
 //
-// null / undefined / NaN win% → a neutral cool grey ("no data"), distinct from both poles.
+// So within the shown moves the WORST reads pure red, the BEST pure green, and the midpoint
+// yellow. That relative stretch is exactly what makes the heat distinctive — a set of moves
+// all around 55–65% still spreads across the full ramp instead of collapsing into one hue.
+//
+// This DELIBERATELY REVERSES the Phase-4 CVD-safe blue↔umber↔vermillion ramp: it is a
+// user-directed product choice to match their mobile DB (they know the red↔green colourblind
+// tradeoff and accepted it). See docs/design-notes.md §1.
+//
+// Split into pure pieces so callers (StatsRows, HeatOverlay, BoardHeatOverlay) all normalize
+// the SAME way over the SAME displayed set, keeping the list and the board in agreement:
+//   - heatDomain(values) → {min, max} over the numeric values
+//   - heatT(value, domain) → t in [0,1] (or null for missing data)
+//   - heatColor(t) → the rgb() string (or a neutral no-data colour for null/NaN)
 
-// Anchors: [position 0..1, [r,g,b]]. Piecewise-linear interpolation between them.
-const ANCHORS = [
-  [0.0, [6, 51, 102]], // #063366 deep blue — losing
-  [0.5, [74, 63, 48]], // #4A3F30 dark umber — even
-  [1.0, [126, 34, 0]], // #7E2200 deep vermillion — winning
-];
+// Neutral "no data" — a move with no win% (never happens for real stats, but keep it safe and
+// visually distinct from both ramp ends rather than defaulting to red or green).
+const NO_DATA = 'rgb(96, 100, 106)';
 
-const NO_DATA = 'rgb(96, 100, 106)'; // #60646A cool slate — "no data", distinct from both poles
-
-function lerp(a, b, t) {
-  return Math.round(a + (b - a) * t);
+function clamp01(t) {
+  return Math.max(0, Math.min(1, t));
 }
 
-export default function heatScale(winPct) {
-  const n = Number(winPct);
-  if (winPct == null || Number.isNaN(n)) return NO_DATA;
-  const t = Math.max(0, Math.min(100, n)) / 100;
-  // Locate the anchor segment containing t, then interpolate within it.
-  for (let i = 0; i < ANCHORS.length - 1; i++) {
-    const [t0, c0] = ANCHORS[i];
-    const [t1, c1] = ANCHORS[i + 1];
-    if (t <= t1) {
-      const f = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
-      return `rgb(${lerp(c0[0], c1[0], f)}, ${lerp(c0[1], c1[1], f)}, ${lerp(c0[2], c1[2], f)})`;
-    }
-  }
-  const last = ANCHORS[ANCHORS.length - 1][1];
-  return `rgb(${last[0]}, ${last[1]}, ${last[2]})`;
+// The pure colour ramp. t in [0,1]: 0 → pure red, 0.5 → yellow, 1 → pure green. Out-of-range t
+// clamps to the endpoints; null / undefined / NaN → the neutral no-data colour.
+export function heatColor(t) {
+  if (t == null || Number.isNaN(Number(t))) return NO_DATA;
+  const c = clamp01(Number(t));
+  if (c <= 0.5) return `rgb(255, ${Math.round(c * 510)}, 0)`;
+  return `rgb(${Math.round((1 - c) * 510)}, 255, 0)`;
 }
+
+// Min/max of the displayed win% values (non-numeric entries ignored). Empty set → {0,0}, which
+// heatT treats as the max==min fallback.
+export function heatDomain(values = []) {
+  const nums = values.map(Number).filter((x) => Number.isFinite(x));
+  if (nums.length === 0) return { min: 0, max: 0 };
+  return { min: Math.min(...nums), max: Math.max(...nums) };
+}
+
+// Normalize a single value to t in [0,1] over the displayed domain. Missing/non-numeric value
+// → null (rendered as no-data). When the domain is degenerate (max == min, e.g. a single shown
+// move) the ramp falls back to an absolute 0..100 scale so a lone 50% still reads as yellow.
+export function heatT(value, domain = { min: 0, max: 0 }) {
+  const n = Number(value);
+  if (value == null || Number.isNaN(n)) return null;
+  const { min, max } = domain || { min: 0, max: 0 };
+  const t = max === min ? n / 100 : (n - min) / (max - min);
+  return clamp01(t);
+}
+
+export default heatColor;

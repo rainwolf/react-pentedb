@@ -1,42 +1,45 @@
-// ExplorerPanel — the position explorer (P2 Task 8), replacing the placeholder. Reads the
-// debounced active position, queries master statistics for it, and presents:
+// ExplorerPanel — the position explorer. Reads the debounced active position, queries master
+// statistics for it, and presents:
 //   1. a position summary (games seen, win% for the side to move);
-//   2. a heat preview — ghost stones on the candidate cells, colored by win% (HeatOverlay);
-//   3. StatsRows — the candidate continuations; hover previews a ghost, click plays the move;
+//   2. a "Heat on board" toggle — the green→red candidate heat is overlaid on the REAL board
+//      (BoardHeatOverlay), so this panel no longer carries its own mini-board preview;
+//   3. StatsRows — the candidate continuations; hovering a row lights that cell up brightly on
+//      the board (via the shared ui hover cell), clicking plays the move;
 //   4. "games through here" — a ResultsList constrained to games passing through this line.
 //
 // CANONICAL vs DISPLAY. Everything that leaves this panel toward the model is canonical: the
-// position-stats query uses the canonical line (selectActivePosition().moves, via the
-// debounce hook), and a row click dispatches applyMove(canonicalCell). The only place a view
-// rotation would apply is rendering candidate cells; HeatOverlay owns that transform. Board
-// rotation now lives in shared ui state (selectRotation, P4 Task 4) rather than BoardPane-local
-// state, but this panel's own preview intentionally stays unrotated (rotation 0) — it is a
-// standalone mini-board, not a view onto the shared board, so it has no reason to track the
-// user's rotation preference. The rotation transform itself is exercised by HeatOverlay's unit
-// tests at rotation ≠ 0.
-import { useCallback, useState } from 'react';
+// position-stats query uses the canonical line (selectActivePosition().moves, via the debounce
+// hook), a row click dispatches applyMove(canonicalCell), and onHover writes the canonical cell
+// into the ui slice. The view-rotation transform for rendering candidate cells lives entirely in
+// HeatOverlay (used by BoardHeatOverlay over the real board).
+import { useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
+import Switch from '@mui/material/Switch';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import CircularProgress from '@mui/material/CircularProgress';
 
 import { usePositionStatsQuery, usePingQuery } from '../../app/api';
-import { selectScope, selectEffectiveScope } from '../../app/uiSlice';
+import {
+  selectScope,
+  selectEffectiveScope,
+  selectHeatOnBoard,
+  setHeatOnBoard,
+  setHeatHoverCell,
+} from '../../app/uiSlice';
 import { applyMove } from '../../model/docSlice';
 import { gridSizeForGame } from '../../board/boardGeometry';
 import PanelError from '../../shell/PanelError';
 import ResultsList from '../search/ResultsList';
 import useDebouncedPosition from './useDebouncedPosition';
 import StatsRows, { sortedRows } from './StatsRows';
-import HeatOverlay from './HeatOverlay';
-
-const PREVIEW_ROTATION = 0; // this panel's own preview is unrotated (see header note)
 
 export default function ExplorerPanel() {
   const dispatch = useDispatch();
   const pos = useDebouncedPosition(150);
-  const [hoverCell, setHoverCell] = useState(null);
+  const heatOn = useSelector(selectHeatOnBoard);
   const { data: ping } = usePingQuery();
   // Effective scope coerces mine/both -> archive when unauthenticated, so a logout/expiry
   // never leaves the stats + "games through here" list firing 401-ing authed queries.
@@ -60,10 +63,14 @@ export default function ExplorerPanel() {
   const handleSelect = useCallback(
     (cell) => {
       dispatch(applyMove(cell)); // canonical cell — NEVER a display/rotated cell
-      setHoverCell(null);
+      dispatch(setHeatHoverCell(null));
     },
     [dispatch]
   );
+
+  // Hovering a row lifts the canonical cell into the ui slice; BoardHeatOverlay reads it and
+  // brightly highlights that cell on the real board. onHover(null) on mouse-leave clears it.
+  const handleHover = useCallback((cell) => dispatch(setHeatHoverCell(cell)), [dispatch]);
 
   if (!hasPos) {
     return (
@@ -80,7 +87,26 @@ export default function ExplorerPanel() {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
       <Box sx={{ px: 1, pt: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Typography variant="subtitle2">Explorer</Typography>
-        {isFetching && <CircularProgress size={14} />}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {isFetching && <CircularProgress size={14} />}
+          <FormControlLabel
+            sx={{ m: 0 }}
+            labelPlacement="start"
+            control={
+              <Switch
+                size="small"
+                checked={heatOn}
+                onChange={(e) => dispatch(setHeatOnBoard(e.target.checked))}
+                inputProps={{ 'data-testid': 'heat-on-board-toggle', 'aria-label': 'Show heat on board' }}
+              />
+            }
+            label={
+              <Typography variant="caption" color="text.secondary">
+                Heat on board
+              </Typography>
+            }
+          />
+        </Box>
       </Box>
 
       <PanelError error={error} />
@@ -93,23 +119,7 @@ export default function ExplorerPanel() {
         </Typography>
       )}
 
-      <Box sx={{ p: 1 }}>
-        <Box
-          sx={{
-            position: 'relative',
-            width: '100%',
-            maxWidth: 240,
-            aspectRatio: '1 / 1',
-            mx: 'auto',
-            borderRadius: 1,
-            bgcolor: 'action.hover',
-          }}
-        >
-          <HeatOverlay cells={nextMoves} gridSize={gridSize} rotation={PREVIEW_ROTATION} hoverCell={hoverCell} />
-        </Box>
-      </Box>
-
-      <StatsRows rows={rows} gridSize={gridSize} onSelect={handleSelect} onHover={setHoverCell} />
+      <StatsRows rows={rows} gridSize={gridSize} onSelect={handleSelect} onHover={handleHover} />
 
       <Divider sx={{ mt: 1 }} />
       <Box sx={{ px: 1, pt: 1 }}>

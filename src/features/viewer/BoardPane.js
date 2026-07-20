@@ -28,6 +28,7 @@ import { setRotation, selectRotation } from '../../app/uiSlice';
 import { selectAiThinking } from '../ai/aiSlice';
 import AiGhostOverlay from '../ai/AiGhostOverlay';
 import ThreatBands from '../threats/ThreatBands';
+import BoardHeatOverlay from '../explorer/BoardHeatOverlay';
 import { buildBoardGame } from './boardGameFactory';
 import { symCell, symMoves, invSymCell } from './boardSymmetry';
 import '../../resources/board.css';
@@ -185,6 +186,9 @@ export default function BoardPane({ pointerCoarse } = {}) {
             <AiGhostOverlay rotation={rotation} />
             {/* Threat bands — same shared rotation, so bands track the board on every rotate. */}
             <ThreatBands rotation={rotation} />
+            {/* Candidate heat (explorer) overlaid on the real board; reads shared rotation +
+                toggle + hover cell from the ui slice. No-ops when the toggle is off or no stats. */}
+            <BoardHeatOverlay />
             {aiThinking && (
               <Box
                 data-testid="board-thinking"
