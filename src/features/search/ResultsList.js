@@ -58,6 +58,7 @@ export default function ResultsList({ game, scope, filters, moves }) {
   const [offset, setOffset] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [openingGid, setOpeningGid] = useState(null);
+  const [openError, setOpenError] = useState(null); // a failed open (404/500/etc.) to surface
 
   // Position-constrained ("games through here") mode: when the explorer passes a `moves`
   // line, the search is scoped to games passing through that CANONICAL position. Without the
@@ -84,30 +85,46 @@ export default function ResultsList({ game, scope, filters, moves }) {
   const total = (data && data.total) || 0;
 
   const openingQuery = useGameQuery(openingGid, { skip: openingGid == null });
+  // Open (or re-activate) the clicked game's tab once ITS OWN moves have loaded. The guard
+  // must prove the fetched game belongs to the CURRENT openingGid: RTK Query keeps the
+  // PREVIOUSLY-opened game in `data` while a new gid is still fetching, so firing on `data`
+  // alone (the old bug) opened a g:<new> tab carrying the prior game's title and — via the
+  // `|| []` fallback when the stale object lacked the new moves — a center-only tree, then
+  // the setOpeningGid(null) below cancelled the real fetch so it never recovered. Gating on
+  // the response header's gid matching openingGid (and !isFetching) keeps this path and the
+  // /g/:gid route loader opening the SAME, correct game.
   useEffect(() => {
-    if (openingGid == null || !openingQuery.data) return;
+    if (openingGid == null) return;
     const id = gameTabId(openingGid);
-    const existing = tabs.find((t) => t.id === id);
-    if (existing) {
-      dispatch(activateTab(id));
-    } else {
-      const header = openingQuery.data.header;
-      const { tree, path } = buildTreeFromMoves(openingQuery.data.moves || []);
-      dispatch(
-        openTab({
-          id,
-          kind: 'game',
-          title: gameTitle(header),
-          game: header ? header.game : game,
-          gid: openingGid,
-          tree,
-          cursorPath: path,
-        })
-      );
+    if (tabs.some((t) => t.id === id)) {
+      dispatch(activateTab(id)); // store-first dedup: reuse the existing g:<gid> tab
+      setOpeningGid(null);
+      return;
     }
+    if (openingQuery.isError) {
+      setOpenError(openingQuery.error); // surface 404/500/etc. instead of spinning forever
+      setOpeningGid(null);
+      return;
+    }
+    const loaded = openingQuery.data;
+    if (openingQuery.isFetching || !loaded || !loaded.header || loaded.header.gid !== openingGid) {
+      return; // still fetching, or `data` is the PREVIOUS game's — wait for THIS gid
+    }
+    const { tree, path } = buildTreeFromMoves(loaded.moves || []);
+    dispatch(
+      openTab({
+        id,
+        kind: 'game',
+        title: gameTitle(loaded.header),
+        game: loaded.header.game,
+        gid: openingGid,
+        tree,
+        cursorPath: path,
+      })
+    );
     setOpeningGid(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openingGid, openingQuery.data]);
+  }, [openingGid, openingQuery.data, openingQuery.isFetching, openingQuery.isError]);
 
   const handleRowClick = (header) => {
     const id = gameTabId(header.gid);
@@ -115,6 +132,7 @@ export default function ResultsList({ game, scope, filters, moves }) {
       dispatch(activateTab(id));
       return;
     }
+    setOpenError(null); // clear any prior failed-open before starting a new one
     setOpeningGid(header.gid);
   };
 
@@ -172,7 +190,7 @@ export default function ResultsList({ game, scope, filters, moves }) {
               </Box>
             );
           })}
-          <PanelError error={error} />
+          <PanelError error={error || openError} />
           {!error && games.length === 0 && !isFetching && (
             <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
               No games found.

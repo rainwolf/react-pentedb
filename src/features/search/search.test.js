@@ -370,6 +370,93 @@ describe('row click opens a game tab at the final position', () => {
     expect(store.getState().docs.activeTabId).toBe('g:999');
     expect(store.getState().docs.tabs).toHaveLength(1); // no duplicate
   });
+
+  // FB2 regression: opening a SECOND archived game. RTK Query keeps the previously-opened
+  // game's result in `data` while the new gid is still fetching, so the openTab effect used
+  // to fire on that STALE object — opening a g:<new> tab with the OLD game's title and an
+  // empty/center-only tree (via the `|| []` fallback), then cancelling the real fetch. The
+  // fix waits until the fetched response's own header.gid matches the requested gid.
+  test('opening a second game while RTK still holds the first game’s data loads the CLICKED game', () => {
+    const DATA_A = { header: { ...HEADER, gid: 999 }, moves: [180, 199] };
+    const HEADER_B = {
+      gid: 888,
+      source: 'archive',
+      game: 1,
+      player1: { name: 'carol' },
+      player2: { name: 'dave' },
+      winner: 0,
+      moveCount: 3,
+    };
+    const DATA_B = { header: HEADER_B, moves: [100, 101, 102] };
+
+    useGamesSearchQuery.mockReturnValue({ data: { total: 1, games: [HEADER_B] }, isFetching: false });
+
+    // Model the stale read: while gid 888 is in flight, the hook hands back game A's data
+    // (isFetching:true); only once `bResolved` flips does 888 return its OWN moves.
+    let bResolved = false;
+    useGameQuery.mockImplementation((gid, opts) => {
+      if (opts && opts.skip) return { data: undefined };
+      if (gid === 888) {
+        return bResolved ? { data: DATA_B, isFetching: false } : { data: DATA_A, isFetching: true };
+      }
+      return { data: DATA_A, isFetching: false };
+    });
+
+    const store = makeStore();
+    // A fresh element each render: rerender(sameElementRef) makes React bail out of
+    // re-rendering (identical-element optimization), so the mock would never advance to B.
+    const ui = () => (
+      <Provider store={store}>
+        <ThemeProvider theme={theme}>
+          <ResultsList game={1} scope="archive" filters={null} />
+        </ThemeProvider>
+      </Provider>
+    );
+    const { rerender } = render(ui());
+
+    // Click B while its fetch is "in flight" (data is still A's). The buggy code opened a
+    // wrong-titled tab here and cancelled the fetch; the fix must wait.
+    fireEvent.click(screen.getByText(/carol/));
+
+    // B's real moves arrive.
+    act(() => {
+      bResolved = true;
+    });
+    rerender(ui());
+
+    const tabs = store.getState().docs.tabs;
+    expect(tabs).toHaveLength(1); // exactly ONE g:888 tab, no junk/duplicate
+    const tab = tabs[0];
+    expect(tab.id).toBe('g:888');
+    expect(tab.gid).toBe(888);
+    expect(tab.title).toBe('carol vs dave'); // B's title, NOT A's ('alice vs bob')
+    expect(tab.tree.root.kids[0].m).toBe(100); // B's full moves, NOT empty/center-only
+    expect(tab.tree.root.kids[0].kids[0].m).toBe(101);
+    expect(tab.tree.root.kids[0].kids[0].kids[0].m).toBe(102);
+    expect(tab.cursorPath).toEqual([0, 0, 0]);
+    expect(store.getState().docs.activeTabId).toBe('g:888');
+
+    // Clicking B again reuses the same tab (no duplicate).
+    fireEvent.click(screen.getByText(/carol/));
+    expect(store.getState().docs.tabs).toHaveLength(1);
+    expect(store.getState().docs.activeTabId).toBe('g:888');
+  });
+
+  test('a failed game fetch surfaces an error instead of spinning forever', () => {
+    useGamesSearchQuery.mockReturnValue({ data: { total: 1, games: [HEADER] }, isFetching: false });
+    useGameQuery.mockImplementation((gid, opts) =>
+      opts && opts.skip
+        ? { data: undefined }
+        : { data: undefined, isError: true, error: { status: 500, data: { error: { message: 'game boom' } } } }
+    );
+
+    const store = makeStore();
+    renderWith(store, <ResultsList game={1} scope="archive" filters={null} />);
+    fireEvent.click(screen.getByText(/alice/));
+
+    expect(store.getState().docs.tabs).toHaveLength(0); // no junk tab on a failed open
+    expect(screen.getByText('game boom')).toBeTruthy(); // error surfaced, not a silent no-op
+  });
 });
 
 // ===================================================================================
