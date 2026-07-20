@@ -35,6 +35,7 @@ import PanelError from '../../shell/PanelError';
 import ResultsList from '../search/ResultsList';
 import useDebouncedPosition from './useDebouncedPosition';
 import StatsRows, { sortedRows } from './StatsRows';
+import { usableCandidates } from './heatScale';
 
 export default function ExplorerPanel() {
   const dispatch = useDispatch();
@@ -56,7 +57,10 @@ export default function ExplorerPanel() {
   );
 
   const nextMoves = (data && data.nextMoves) || [];
-  const rows = sortedRows(nextMoves);
+  // Exclude candidates already on the board (a backend nextMoves can echo a played cell at 0%)
+  // BEFORE the heat domain and the list — the SAME filter BoardHeatOverlay applies, so the list
+  // and the board heat stay on one filtered set and their green→red ramps agree.
+  const rows = sortedRows(usableCandidates(nextMoves, moves));
   const totalGames = data ? data.totalGames : null;
   const totalWinPct = data ? data.totalWinPct : null;
 

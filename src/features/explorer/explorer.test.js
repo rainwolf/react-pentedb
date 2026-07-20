@@ -8,7 +8,8 @@
 //     onSelect with the CANONICAL move cell (never a display/rotated cell); hover → onHover.
 //   - HeatOverlay: one ghost per candidate; the ghost is placed at symCell(canonicalMove,
 //     rotation) — i.e. it transforms canonical → display with the CURRENT rotation before
-//     rendering (the rotation correctness seam) — and is filled by heatScale(winPct).
+//     rendering (the rotation correctness seam) — and is filled by heatColor(heatT(winPct,
+//     domain)) over the shown set (the green→red RELATIVE ramp).
 //   - ExplorerPanel: queries usePositionStatsQuery with the CANONICAL active line; a stats
 //     row click dispatches applyMove(canonicalCell); "games through here" drives ResultsList
 //     in position-constrained mode with the canonical line.
@@ -42,7 +43,7 @@ import uiReducer, {
   selectHeatHoverCell,
 } from '../../app/uiSlice';
 // eslint-disable-next-line import/first
-import heatColor, { heatDomain, heatT } from './heatScale';
+import heatColor, { heatDomain, heatT, usableCandidates } from './heatScale';
 // eslint-disable-next-line import/first
 import useDebouncedPosition from './useDebouncedPosition';
 // eslint-disable-next-line import/first
@@ -65,6 +66,17 @@ const NEXT_MOVES = [
   { move: 240, games: 5, wins: 5, winPct: 100 },
 ];
 const STATS = { totalGames: 100, totalWinPct: 55, rotation: 0, nextMoves: NEXT_MOVES };
+
+// The reported defect: the backend's nextMoves for position [180] echoes the ALREADY-PLAYED
+// cell 180 (K10) at 0% / 3 games. Left in the shown set it anchors the domain min at 0 and
+// compresses every real candidate toward green, and paints a stray disc on the played stone.
+const OCCUPIED_NEXT_MOVES = [
+  { move: 180, games: 3, wins: 0, winPct: 0 }, // K10 — already on the board (∈ moves [180])
+  { move: 200, games: 10, wins: 6, winPct: 60 },
+  { move: 220, games: 30, wins: 9, winPct: 30 },
+  { move: 240, games: 5, wins: 5, winPct: 100 },
+];
+const OCCUPIED_STATS = { totalGames: 100, totalWinPct: 55, rotation: 0, nextMoves: OCCUPIED_NEXT_MOVES };
 
 function treeFromLine(moves) {
   let tree = createTree();
@@ -190,6 +202,15 @@ describe('heatT / heatDomain — relative normalization over the displayed set',
     expect(heatT(undefined, dom)).toBeNull();
   });
 
+  // A null/non-finite win% must NOT be coerced to 0 (Number(null) === 0) and drag the min —
+  // that would silently re-anchor the whole ramp. heatDomain SKIPS them, consistent with
+  // heatT(null) → null. The all-missing case guards against an empty-after-filter crash.
+  test('heatDomain skips null / non-finite win% (no phantom 0 dragging the min)', () => {
+    expect(heatDomain([null, 30, 60, 100])).toEqual({ min: 30, max: 100 });
+    expect(heatDomain([undefined, NaN, 45, 90])).toEqual({ min: 45, max: 90 });
+    expect(heatDomain([null, undefined])).toEqual({ min: 0, max: 0 }); // empty after filter → safe
+  });
+
   test('the rendered heat is identical under light and dark themes (theme-independent)', () => {
     const cells = [{ move: 180, winPct: 50 }]; // singleton set → domain {50,50} → t=0.5 → yellow
     const light = createTheme({ palette: { mode: 'light' } });
@@ -209,6 +230,39 @@ describe('heatT / heatDomain — relative normalization over the displayed set',
     const darkFill = cd.querySelector('circle').getAttribute('fill');
     expect(lightFill).toBe(darkFill);
     expect(lightFill).toBe(heatColor(0.5));
+  });
+});
+
+// ===================================================================================
+// usableCandidates — exclude ALREADY-OCCUPIED cells from the heat (domain + render)
+// The backend's nextMoves occasionally echoes a played cell (e.g. K10=180 at 0% for position
+// [180]); left in the shown set that 0% anchors the domain min and compresses every real
+// candidate toward green. Excluding it BEFORE heatDomain keeps the ramp distinctive, and the
+// SAME filtered set must feed both the list (StatsRows) and the board (HeatOverlay).
+// ===================================================================================
+describe('usableCandidates — occupied cells excluded before the heat domain', () => {
+  test('drops candidates whose cell is already on the board (∈ moves)', () => {
+    expect(usableCandidates(OCCUPIED_NEXT_MOVES, [180]).map((c) => c.move)).toEqual([200, 220, 240]);
+  });
+
+  test('keeps every candidate when none is occupied', () => {
+    expect(usableCandidates(NEXT_MOVES, [180]).map((c) => c.move)).toEqual([200, 220, 240]);
+  });
+
+  test('is null-safe on empty inputs', () => {
+    expect(usableCandidates()).toEqual([]);
+    expect(usableCandidates(OCCUPIED_NEXT_MOVES)).toEqual(OCCUPIED_NEXT_MOVES); // no moves → all kept
+  });
+
+  test('the occupied 0% cell no longer drags the domain min: real candidates span red→green', () => {
+    const filtered = usableCandidates(OCCUPIED_NEXT_MOVES, [180]);
+    const dom = heatDomain(filtered.map((c) => c.winPct)); // {min:30, max:100} — NOT {min:0}
+    expect(dom).toEqual({ min: 30, max: 100 });
+    expect(heatColor(heatT(30, dom))).toBe('rgb(255, 0, 0)'); // worst REAL candidate = red
+    expect(heatColor(heatT(100, dom))).toBe('rgb(0, 255, 0)'); // best REAL candidate = green
+    // ...whereas the raw (unfiltered) set would collapse the worst real move toward yellow/green.
+    const rawDom = heatDomain(OCCUPIED_NEXT_MOVES.map((c) => c.winPct)); // {min:0, max:100}
+    expect(heatColor(heatT(30, rawDom))).not.toBe('rgb(255, 0, 0)');
   });
 });
 
@@ -455,6 +509,17 @@ describe('ExplorerPanel', () => {
     fireEvent.mouseLeave(screen.getByTestId('stats-row-200'));
     expect(selectHeatHoverCell(store.getState())).toBeNull();
   });
+
+  // The list must NOT show a candidate that is already on the board: the played K10 (cell 180,
+  // ∈ moves [180]) is dropped from StatsRows, so it can't anchor the min or list a 0%/3-games row.
+  test('excludes an already-occupied candidate from the stats list', () => {
+    usePositionStatsQuery.mockReturnValue({ data: OCCUPIED_STATS, isFetching: false });
+    renderWith(makeStore([180], [0]), <ExplorerPanel />);
+    expect(screen.queryByTestId('stats-row-180')).toBeNull(); // occupied K10 not listed
+    expect(screen.queryByTestId('stats-row-200')).toBeTruthy();
+    expect(screen.queryByTestId('stats-row-220')).toBeTruthy();
+    expect(screen.queryByTestId('stats-row-240')).toBeTruthy();
+  });
 });
 
 // ===================================================================================
@@ -501,6 +566,27 @@ describe('BoardHeatOverlay', () => {
     expect(hovered.getAttribute('data-hover')).toBe('true');
     expect(Number(hovered.getAttribute('fill-opacity'))).toBe(1);
     expect(container.querySelector('[data-testid="heat-hover-ring"]')).toBeTruthy();
+  });
+
+  // The board must not paint a disc on an already-played stone, and — using the SAME filtered
+  // set as the list — the remaining discs span the full red→green range (the 0% cell no longer
+  // compresses them). Proves the board uses the FILTERED domain, not the raw one.
+  test('excludes the occupied cell from the board; remaining discs span red→green (filtered domain)', () => {
+    usePositionStatsQuery.mockReturnValue({ data: OCCUPIED_STATS, isFetching: false });
+    const { container } = renderWith(makeBoardStore([180]), <BoardHeatOverlay />); // rotation 0
+    // no ghost on the played cell 180 (K10)
+    expect(container.querySelector('circle[data-canonical="180"]')).toBeNull();
+    // exactly the three real candidates remain (no hover → one circle each)
+    const circles = container.querySelectorAll('[data-testid="heat-overlay"] circle');
+    expect(circles.length).toBe(3);
+    // worst REAL candidate (220 @30%) reads pure red; best (240 @100%) pure green.
+    expect(container.querySelector('circle[data-canonical="220"]').getAttribute('fill')).toBe('rgb(255, 0, 0)');
+    expect(container.querySelector('circle[data-canonical="240"]').getAttribute('fill')).toBe('rgb(0, 255, 0)');
+    // and this red is the FILTERED-domain result — the raw domain (incl. the 0% cell) would not.
+    const rawDom = heatDomain(OCCUPIED_NEXT_MOVES.map((c) => c.winPct)); // {min:0,max:100}
+    expect(container.querySelector('circle[data-canonical="220"]').getAttribute('fill')).not.toBe(
+      heatColor(heatT(30, rawDom))
+    );
   });
 });
 

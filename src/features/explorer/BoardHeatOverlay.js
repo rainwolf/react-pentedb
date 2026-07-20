@@ -26,6 +26,7 @@ import {
 import { gridSizeForGame } from '../../board/boardGeometry';
 import useDebouncedPosition from './useDebouncedPosition';
 import HeatOverlay from './HeatOverlay';
+import { usableCandidates } from './heatScale';
 
 // Inner: runs the position-stats query. Only mounted when the api slice exists (see below).
 function BoardHeatData() {
@@ -50,9 +51,12 @@ function BoardHeatData() {
   );
 
   const nextMoves = (data && data.nextMoves) || [];
-  if (!on || !hasPos || nextMoves.length === 0) return null;
+  // Same exclusion as the list (ExplorerPanel): drop candidates already on the board so an echoed
+  // played cell neither anchors the domain nor paints a disc over its own stone — one filtered set.
+  const cells = usableCandidates(nextMoves, moves);
+  if (!on || !hasPos || cells.length === 0) return null;
 
-  return <HeatOverlay cells={nextMoves} gridSize={gridSize} rotation={rotation} hoverCell={hoverCell} />;
+  return <HeatOverlay cells={cells} gridSize={gridSize} rotation={rotation} hoverCell={hoverCell} />;
 }
 
 export default function BoardHeatOverlay() {

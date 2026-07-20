@@ -39,12 +39,30 @@ export function heatColor(t) {
   return `rgb(${Math.round((1 - c) * 510)}, 255, 0)`;
 }
 
-// Min/max of the displayed win% values (non-numeric entries ignored). Empty set → {0,0}, which
-// heatT treats as the max==min fallback.
+// Min/max of the displayed win% values. Null/undefined/non-finite entries are SKIPPED (not
+// coerced): Number(null) === 0 would otherwise phantom-anchor the min at 0 and drag the whole
+// ramp — the same corruption as leaving an occupied 0% cell in the set. This mirrors
+// heatT(null) → null. Empty (or empty-after-filter) → {0,0}, the max==min fallback.
 export function heatDomain(values = []) {
-  const nums = values.map(Number).filter((x) => Number.isFinite(x));
+  const nums = values
+    .filter((v) => v != null)
+    .map(Number)
+    .filter((x) => Number.isFinite(x));
   if (nums.length === 0) return { min: 0, max: 0 };
   return { min: Math.min(...nums), max: Math.max(...nums) };
+}
+
+// usableCandidates — the candidate set the heat should actually consider: the backend's
+// nextMoves MINUS any cell already on the board (cell ∈ the active position's played `moves`).
+// The position-stats nextMoves occasionally echoes an already-played cell (e.g. K10 at 0% / a
+// few games for position [180]); left in, that 0% cell anchors the domain min and compresses
+// every real candidate toward green, and paints a stray disc over the played stone. Excluding
+// it HERE — BEFORE heatDomain and before any render — is what both the list (StatsRows via
+// ExplorerPanel) and the board (HeatOverlay via BoardHeatOverlay) call, so they stay on the
+// SAME filtered set and their green→red ramps agree cell-for-cell.
+export function usableCandidates(nextMoves = [], moves = []) {
+  const played = new Set(moves);
+  return nextMoves.filter((c) => c && !played.has(c.move));
 }
 
 // Normalize a single value to t in [0,1] over the displayed domain. Missing/non-numeric value
