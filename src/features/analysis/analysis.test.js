@@ -30,7 +30,7 @@ import {
   toggleTag as gtToggleTag,
 } from '../../model/gameTree';
 
-import TreeView, { buildTreeRows } from './TreeView';
+import TreeView, { buildTreeRows, chipLabel } from './TreeView';
 import TagBar, { TAG_GLYPHS } from './TagBar';
 import CommentBox from './CommentBox';
 import MoveStrip from '../viewer/MoveStrip';
@@ -162,10 +162,13 @@ describe('TreeView.buildTreeRows', () => {
 });
 
 describe('TreeView (render)', () => {
+  // Fixture moves 100/101/102/200 -> coordinates F14/G14/H14/L9 (cell = x + y*19, row = 19-y,
+  // columns A-H,J-T skipping I; see src/export/coords.js). Chips must show the coordinate, not
+  // the raw cell number.
   test('renders a chip per move and navigates the cursor on click', () => {
     const store = makeStore(fixture(), []);
     renderWith(store, <TreeView />);
-    fireEvent.click(screen.getByText('101'));
+    fireEvent.click(screen.getByText('G14')); // move 101
     expect(selectActivePosition(store.getState()).moves).toEqual([100, 101]);
     expect(cursorOf(store)).toEqual([0, 0]);
   });
@@ -173,13 +176,13 @@ describe('TreeView (render)', () => {
   test('shows annotation glyphs on tagged nodes', () => {
     const store = makeStore(gtToggleTag(fixture(), [0, 0], '!'), []);
     renderWith(store, <TreeView />);
-    expect(screen.getByText('101 !')).toBeTruthy();
+    expect(screen.getByText('G14 !')).toBeTruthy();
   });
 
   test('right-click promotes a variation via the node menu', () => {
     const store = makeStore(fixture(), []);
     renderWith(store, <TreeView />);
-    fireEvent.contextMenu(screen.getByText('102'));
+    fireEvent.contextMenu(screen.getByText('H14')); // move 102
     fireEvent.click(screen.getByText('Promote variation'));
     expect(nodeAt(treeOf(store), [0, 0]).m).toBe(102);
   });
@@ -187,7 +190,7 @@ describe('TreeView (render)', () => {
   test('right-click delete opens a confirm dialog, then removes the branch', () => {
     const store = makeStore(fixture(), [0, 0]); // cursor on 101
     renderWith(store, <TreeView />);
-    fireEvent.contextMenu(screen.getByText('101'));
+    fireEvent.contextMenu(screen.getByText('G14')); // move 101
     fireEvent.click(screen.getByText('Delete branch'));
     // confirm dialog
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
@@ -198,7 +201,7 @@ describe('TreeView (render)', () => {
   test('cancelling the confirm dialog leaves the tree unchanged', () => {
     const store = makeStore(fixture(), []);
     renderWith(store, <TreeView />);
-    fireEvent.contextMenu(screen.getByText('101'));
+    fireEvent.contextMenu(screen.getByText('G14')); // move 101
     fireEvent.click(screen.getByText('Delete branch'));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(nodeAt(treeOf(store), [0]).kids).toHaveLength(2); // still 101 + 102
@@ -209,12 +212,25 @@ describe('TreeView (render)', () => {
     try {
       const store = makeStore(fixture(), []);
       renderWith(store, <TreeView />);
-      fireEvent.touchStart(screen.getByText('102'), { touches: [{ clientX: 0, clientY: 0 }] });
+      fireEvent.touchStart(screen.getByText('H14'), { touches: [{ clientX: 0, clientY: 0 }] }); // move 102
       act(() => vi.advanceTimersByTime(600));
       expect(screen.getByText('Promote variation')).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('renders the board coordinate for a move (180 -> K10, the coords.js worked example)', () => {
+    const { tree } = addMove(createTree(), [], 180);
+    const store = makeStore(tree, []);
+    renderWith(store, <TreeView />);
+    expect(screen.getByText('K10')).toBeTruthy();
+    expect(screen.queryByText('180')).toBeNull();
+  });
+
+  test('chipLabel never crashes on the root node (m === null) and renders empty', () => {
+    expect(chipLabel({ m: null, tags: [] })).toBe('');
+    expect(chipLabel({ m: null, tags: ['!'] })).toBe(' !');
   });
 });
 

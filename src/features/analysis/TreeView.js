@@ -1,7 +1,7 @@
 // Variation tree under the move strip: the mainline laid out horizontally, each variation
-// indented on its own row (a recursive flatten of the gameTree kids). Chips show the move
-// (reusing MoveStrip's raw-cell labeling — the canonical coordinate module lands in Task 4)
-// plus any annotation glyphs. Clicking a chip moves the cursor (navTo); right-click or a
+// indented on its own row (a recursive flatten of the gameTree kids). Chips show the move as
+// a human-readable board coordinate (cellToAlpha, src/export/coords.js) plus any annotation
+// glyphs. Clicking a chip moves the cursor (navTo); right-click or a
 // touch long-press opens a node menu to promote the variation or delete the branch (the
 // latter behind a confirm dialog). The cursor-to-parent move on delete lives in the docSlice
 // reducer, so the menu just dispatches the intent.
@@ -20,6 +20,7 @@ import Button from '@mui/material/Button';
 
 import { navTo, promoteVariation, deleteBranch } from '../../model/docSlice';
 import ExportMenu from '../exchange/ExportMenu';
+import { cellToAlpha } from '../../export/coords';
 
 const LONG_PRESS_MS = 500;
 
@@ -58,8 +59,13 @@ function samePath(a, b) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-function chipLabel(item) {
-  return item.tags && item.tags.length ? `${item.m} ${item.tags.join('')}` : `${item.m}`;
+// item.m is a flat cell (0..360) for every non-root node reaching this label; the root node
+// (m === null) is filtered out of buildTreeRows before it ever gets here, but cellToAlpha
+// throws RangeError on anything but an in-range integer, so guard defensively rather than
+// rely on that upstream filter.
+export function chipLabel(item) {
+  const label = item.m == null ? '' : cellToAlpha(item.m);
+  return item.tags && item.tags.length ? `${label} ${item.tags.join('')}` : label;
 }
 
 export default function TreeView() {

@@ -38,7 +38,7 @@ import BoardPane from './BoardPane';
 // eslint-disable-next-line import/first
 import GameHeaderBar from './GameHeaderBar';
 // eslint-disable-next-line import/first
-import MoveStrip, { buildStripItems } from './MoveStrip';
+import MoveStrip, { buildStripItems, moveLabel } from './MoveStrip';
 // eslint-disable-next-line import/first
 import NavControls from './NavControls';
 // eslint-disable-next-line import/first
@@ -316,8 +316,22 @@ describe('MoveStrip', () => {
     renderWith(store, <MoveStrip />);
     expect(screen.getByText('+1')).toBeTruthy();
 
-    fireEvent.click(screen.getByText('180'));
+    fireEvent.click(screen.getByText('K10')); // move 180
     expect(selectActivePosition(store.getState()).moves).toEqual([180]);
+  });
+
+  test('shows board coordinates for a line, not raw cell numbers (180 -> K10, 200 -> L9)', () => {
+    const store = makeStore([180, 200], [0, 0]);
+    renderWith(store, <MoveStrip />);
+    expect(screen.getByText('K10')).toBeTruthy();
+    expect(screen.getByText('L9')).toBeTruthy();
+    expect(screen.queryByText('180')).toBeNull();
+    expect(screen.queryByText('200')).toBeNull();
+  });
+
+  test('moveLabel never crashes on a null move (root) and renders empty', () => {
+    expect(moveLabel(null)).toBe('');
+    expect(moveLabel(undefined)).toBe('');
   });
 });
 
