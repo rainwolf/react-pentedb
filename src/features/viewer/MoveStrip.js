@@ -65,7 +65,7 @@ export default function MoveStrip() {
   const size = gridSizeForGame(activeTab.game);
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, flexShrink: 0 }}>
       <Stack
         direction="row"
         spacing={0.5}

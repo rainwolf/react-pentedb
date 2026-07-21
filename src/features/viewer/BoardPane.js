@@ -138,8 +138,8 @@ export default function BoardPane({ pointerCoarse } = {}) {
   const cancelPending = () => setPending(null);
 
   return (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, p: 1 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 32 }}>
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, p: 1 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 32, flexShrink: 0 }}>
         <IconButton
           size="small"
           title="Rotate board"
@@ -171,12 +171,17 @@ export default function BoardPane({ pointerCoarse } = {}) {
         )}
       </Box>
 
+      {/* Sizing container: fills the flex slot left below the control row (flex:1, minHeight:0)
+          and, via containerType:'size', exposes its OWN width/height as container-query units so
+          the square board can be sized to the SMALLER of the two — it shrinks when the tray opens
+          instead of overflowing onto the move strip below. */}
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 240, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', containerType: 'size' }}>
       <Box
         data-testid="board-pane"
         data-shake={shaking ? 'true' : 'false'}
         className={shaking ? 'board-shake' : undefined}
         onWheel={handleWheel}
-        sx={{ position: 'relative', width: '100%', maxWidth: 640, aspectRatio: '1 / 1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        sx={{ position: 'relative', width: 'min(100cqw, 100cqh, 640px)', maxWidth: 640, aspectRatio: '1 / 1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
         {boardGame && activePos ? (
           <>
@@ -216,6 +221,7 @@ export default function BoardPane({ pointerCoarse } = {}) {
             </Typography>
           </Box>
         )}
+      </Box>
       </Box>
     </Box>
   );

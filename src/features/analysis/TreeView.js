@@ -111,7 +111,7 @@ export default function TreeView() {
   };
 
   return (
-    <Box data-testid="tree-view" sx={{ px: 1, py: 0.5, overflow: 'auto' }}>
+    <Box data-testid="tree-view" sx={{ px: 1, py: 0.5, overflow: 'auto', maxHeight: 220 }}>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
         <ExportMenu label="Export tree" size="small" />
       </Box>
