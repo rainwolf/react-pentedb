@@ -348,7 +348,7 @@ export default function Workbench() {
   // Center pane: tab strip, game header (captures/to-move), transport controls, the interactive
   // board, and the move strip. Each viewer piece reads the active position from docSlice itself.
   const centerColumn = (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflowY: 'auto' }}>
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflowY: 'auto', scrollbarGutter: 'stable' }}>
       <PanelTabs tabs={docs.tabs} activeTabId={docs.activeTabId} onActivate={handleActivate} onClose={handleClose} />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1, py: 0.5, borderBottom: 1, borderColor: 'divider' }}>
         <Button

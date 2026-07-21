@@ -171,17 +171,18 @@ export default function BoardPane({ pointerCoarse } = {}) {
         )}
       </Box>
 
-      {/* Sizing container: fills the flex slot left below the control row (flex:1, minHeight:0)
-          and, via containerType:'size', exposes its OWN width/height as container-query units so
-          the square board can be sized to the SMALLER of the two — it shrinks when the tray opens
-          instead of overflowing onto the move strip below. */}
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: 240, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', containerType: 'size' }}>
+      {/* Sizing container: sized by WIDTH only and pinned flexShrink:0 so the board keeps a
+          stable, width-based footprint. It does NOT consume the leftover vertical space (no
+          flex:1) and does NOT read the pane's height, so growing the analysis tray below can
+          never shrink the board — the center column simply scrolls (overflowY:auto) when the
+          board + strip + tree exceed the viewport. See FB13. */}
+      <Box sx={{ flexShrink: 0, minWidth: 0, width: '100%', display: 'flex', justifyContent: 'center' }}>
       <Box
         data-testid="board-pane"
         data-shake={shaking ? 'true' : 'false'}
         className={shaking ? 'board-shake' : undefined}
         onWheel={handleWheel}
-        sx={{ position: 'relative', width: 'min(100cqw, 100cqh, 640px)', maxWidth: 640, aspectRatio: '1 / 1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        sx={{ position: 'relative', width: '100%', maxWidth: 640, aspectRatio: '1 / 1', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       >
         {boardGame && activePos ? (
           <>
