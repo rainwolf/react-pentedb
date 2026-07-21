@@ -50,6 +50,11 @@ function BoardHeatData() {
     { skip: !on || !hasPos } // toggle OFF or no position → no request fires
   );
 
+  // nextMoves[].move arrives ALREADY in the caller's local/canonical board orientation — the
+  // server pre-rotates each candidate (see api.js). The response's own top-level `rotation` is
+  // informational only and is intentionally never read here. `rotation` below (from
+  // selectRotation) is a DIFFERENT thing: the ui slice's local VIEW-rotation preference, which
+  // HeatOverlay uses to map each already-local cell onto the currently-rotated board display.
   const nextMoves = (data && data.nextMoves) || [];
   // Same exclusion as the list (ExplorerPanel): drop candidates already on the board so an echoed
   // played cell neither anchors the domain nor paints a disc over its own stone — one filtered set.

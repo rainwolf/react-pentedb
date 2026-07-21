@@ -10,8 +10,12 @@
 // CANONICAL vs DISPLAY. Everything that leaves this panel toward the model is canonical: the
 // position-stats query uses the canonical line (selectActivePosition().moves, via the debounce
 // hook), a row click dispatches applyMove(canonicalCell), and onHover writes the canonical cell
-// into the ui slice. The view-rotation transform for rendering candidate cells lives entirely in
-// HeatOverlay (used by BoardHeatOverlay over the real board).
+// into the ui slice. Moves coming BACK from the query (nextMoves[].move, via StatsRows) are
+// already in that same local/canonical orientation — the server pre-rotates them before
+// responding (see api.js) — so nothing here re-rotates them. The response's top-level `rotation`
+// is informational only and must NOT be re-applied to nextMoves; that would double-rotate and
+// corrupt the cell. The separate VIEW-rotation transform (for a locally-rotated board display)
+// lives entirely in HeatOverlay (used by BoardHeatOverlay over the real board).
 import { useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';

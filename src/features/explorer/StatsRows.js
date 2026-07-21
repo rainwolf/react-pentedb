@@ -2,11 +2,15 @@
 // continuation: move label, games count, an inline win-rate bar, and win%; plus a totals
 // row aggregating the listed continuations.
 //
-// Coordinates: rows carry the backend's CANONICAL move cell verbatim. onSelect(cell) and
-// onHover(cell) both hand back that canonical cell — the caller applies it as a move
-// (canonical) and/or maps it to a display cell for the ghost/heat overlay (see HeatOverlay).
-// Row labels are the canonical board coordinate (A1-style), so they name the true move
-// regardless of any view rotation the board is currently showing.
+// Coordinates: rows carry the move cell verbatim as the backend returns it — ALREADY in the
+// board's local/canonical orientation (the server pre-rotates each nextMoves cell to match the
+// caller's line; see api.js). The response's top-level `rotation` is informational only and is
+// never applied to it. onSelect(cell) and onHover(cell) hand back that same local cell — the
+// caller applies it as a move and/or forwards it to the ghost/heat overlay (see HeatOverlay),
+// which separately maps it onto the CURRENT VIEW rotation — a local display preference, a
+// different concept from the backend's informational `rotation` field. Row labels are that
+// same local board coordinate (A1-style), so they name the true move regardless of any view
+// rotation the board is currently showing.
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 

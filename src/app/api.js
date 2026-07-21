@@ -38,6 +38,11 @@ export const api = createApi({
     // --- position stats (Phase 1 Task 3) -----------------------------------------
     // POST /api/db/position-stats  {game, moves, scope, filters}
     //   → {totalGames, totalWinPct, rotation, nextMoves:[{move, games, wins, winPct}]}
+    // nextMoves[].move is ALREADY in the caller's local board orientation — the server
+    // (PositionStatsHandler) rotates each candidate back to it via rotateMoveToLocalRotation
+    // (rotateFirstMove when numMoves===0) before responding. The top-level `rotation` is
+    // INFORMATIONAL ONLY (how the position itself was normalized for the master-tree lookup) —
+    // the client must NOT re-apply it to `move`; doing so double-rotates and corrupts the cell.
     positionStats: builder.query({
       query: ({ game, moves, scope = 'archive', filters = null }) => ({
         url: '/position-stats',

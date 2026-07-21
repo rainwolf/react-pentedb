@@ -8,11 +8,15 @@
 // max→green, midpoint→yellow), matching the mobile DB apps. Callers pass the same nextMoves set
 // they hand to StatsRows, so the board and the list agree cell-for-cell.
 //
-// THE ROTATION SEAM. Candidate `move` cells arrive CANONICAL (the coordinate system of the
-// stored move tree and of the position-stats query). The board, however, may be showing a
-// rotated/reflected VIEW. So every ghost is mapped canonical → display via symCell(move,
-// rotation, n) BEFORE it is positioned — exactly as BoardPane maps its move list. `hoverCell`
-// is compared in canonical space (it is the row's canonical move).
+// THE ROTATION SEAM. Candidate `move` cells arrive CANONICAL (the app's own model coordinate —
+// the same space as the line sent to the position-stats query; the backend has ALREADY rotated
+// each candidate to this local/caller orientation server-side, so no rotation-field bookkeeping
+// is needed to get here — see api.js). The board, however, may be showing a rotated/reflected
+// VIEW (a local display preference, `rotation` below, from the ui slice's selectRotation — a
+// DIFFERENT rotation than the position-stats response's own top-level `rotation`, which is
+// informational only and is never read by this component). So every ghost is mapped canonical
+// → VIEW via symCell(move, rotation, n) BEFORE it is positioned — exactly as BoardPane maps its
+// move list. `hoverCell` is compared in canonical space (it is the row's canonical move).
 //
 // HOVER = MUCH BRIGHTER. The hovered / selected candidate is deliberately loud: a bigger,
 // FULL-opacity disc, a bright white outline, and a second white ring drawn around it so it
@@ -22,7 +26,12 @@
 // Geometry (registration): the overlay SVG shares the board's viewBox, so its inner group
 // reproduces the board's transform stack — translate(14.5,14.5) scale(0.95) — placing a circle
 // drawn at (10·col,10·row) dead-centre on its grid intersection under any rotation (see
-// ThreatBands / AiGhostOverlay for the same transform).
+// ThreatBands / AiGhostOverlay for the same transform). Because that shared scale(0.95) is the
+// ONLY scaling between this local 10-units-per-cell space and the rendered pixel size — same as
+// the board's own stone stack (BoardSquare → Stone/SimpleStone, whose circle is r = size/2 = 5
+// for a size-10 cell, under the board's own compounding scale(0.95) — see boardGeometry.js /
+// Board.js's `#boardgroup` transform) — a disc radius of 5 here renders at the SAME on-screen
+// size as a real stone.
 
 import { symCell } from '../viewer/boardSymmetry';
 import { heatColor, heatDomain, heatT } from './heatScale';
@@ -56,7 +65,12 @@ export default function HeatOverlay({ cells = [], gridSize = 19, rotation = 0, h
                 data-hover={isHover ? 'true' : 'false'}
                 cx={10 * x}
                 cy={10 * y}
-                r={isHover ? 5.6 : 3.6}
+                // Base disc radius matches a real stone (Stone.js/SimpleStone.js draw r =
+                // size/2 = 5 in this same pre-group-scale local space, see boardGeometry
+                // note below) so a suggestion disc reads as stone-sized, not a smaller dot.
+                // The hover disc + its ring stay proportionally bigger/brighter (same ratios
+                // as before the resize) so the highlighted candidate still pops.
+                r={isHover ? 7.8 : 5}
                 fill={fill}
                 fillOpacity={isHover ? 1 : 0.66}
                 stroke={isHover ? '#ffffff' : 'rgba(15,12,10,0.5)'}
@@ -68,7 +82,7 @@ export default function HeatOverlay({ cells = [], gridSize = 19, rotation = 0, h
                   data-testid="heat-hover-ring"
                   cx={10 * x}
                   cy={10 * y}
-                  r={7.4}
+                  r={10.3}
                   fill="none"
                   stroke="#ffffff"
                   strokeOpacity={0.95}
