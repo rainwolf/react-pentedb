@@ -24,14 +24,19 @@ import Divider from '@mui/material/Divider';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import CircularProgress from '@mui/material/CircularProgress';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
 import { usePositionStatsQuery, usePingQuery } from '../../app/api';
 import {
   selectScope,
   selectEffectiveScope,
   selectHeatOnBoard,
+  selectHeatHoverCell,
+  selectExplorerSort,
   setHeatOnBoard,
   setHeatHoverCell,
+  setExplorerSort,
 } from '../../app/uiSlice';
 import { applyMove } from '../../model/docSlice';
 import { gridSizeForGame } from '../../board/boardGeometry';
@@ -60,11 +65,15 @@ export default function ExplorerPanel() {
     { skip: !hasPos }
   );
 
+  const sortMode = useSelector(selectExplorerSort);
+  const hoverCell = useSelector(selectHeatHoverCell);
+
   const nextMoves = (data && data.nextMoves) || [];
   // Exclude candidates already on the board (a backend nextMoves can echo a played cell at 0%)
   // BEFORE the heat domain and the list — the SAME filter BoardHeatOverlay applies, so the list
-  // and the board heat stay on one filtered set and their green→red ramps agree.
-  const rows = sortedRows(usableCandidates(nextMoves, moves));
+  // and the board heat stay on one filtered set and their green→red ramps agree. `sortMode` only
+  // reorders the list (popularity vs win rate); the board heat colouring is unaffected.
+  const rows = sortedRows(usableCandidates(nextMoves, moves), sortMode);
   const totalGames = data ? data.totalGames : null;
   const totalWinPct = data ? data.totalWinPct : null;
 
@@ -117,6 +126,37 @@ export default function ExplorerPanel() {
         </Box>
       </Box>
 
+      <Box sx={{ px: 1, pb: 0.5, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        <Typography variant="caption" color="text.secondary">
+          Sort
+        </Typography>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={sortMode}
+          onChange={(e, val) => {
+            if (val) dispatch(setExplorerSort(val)); // ignore the null a re-click of the active button sends
+          }}
+          aria-label="Sort candidate moves"
+          sx={{
+            '& .MuiToggleButton-root': {
+              py: 0.1,
+              px: 0.9,
+              textTransform: 'none',
+              fontSize: '0.68rem',
+              lineHeight: 1.4,
+            },
+          }}
+        >
+          <ToggleButton value="games" data-testid="sort-games" aria-label="Sort by popularity">
+            Popularity
+          </ToggleButton>
+          <ToggleButton value="winrate" data-testid="sort-winrate" aria-label="Sort by win rate">
+            Win rate
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
+
       <PanelError error={error} />
 
       {!error && (
@@ -127,7 +167,7 @@ export default function ExplorerPanel() {
         </Typography>
       )}
 
-      <StatsRows rows={rows} gridSize={gridSize} onSelect={handleSelect} onHover={handleHover} />
+      <StatsRows rows={rows} gridSize={gridSize} onSelect={handleSelect} onHover={handleHover} hoverCell={hoverCell} />
 
       <Divider sx={{ mt: 1 }} />
       <Box sx={{ px: 1, pt: 1 }}>

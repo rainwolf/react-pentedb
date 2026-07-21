@@ -39,8 +39,10 @@ import uiReducer, {
   setRotation,
   setHeatOnBoard,
   setHeatHoverCell,
+  setExplorerSort,
   selectHeatOnBoard,
   selectHeatHoverCell,
+  selectExplorerSort,
 } from '../../app/uiSlice';
 // eslint-disable-next-line import/first
 import heatColor, { heatDomain, heatT, usableCandidates } from './heatScale';
@@ -319,6 +321,29 @@ describe('StatsRows helpers', () => {
     expect(sortedRows(NEXT_MOVES).map((r) => r.move)).toEqual([220, 200, 240]);
   });
 
+  // Sort-mode switch (explorer feedback rework). 'games' = popularity (games desc, winPct
+  // tiebreak); 'winrate' = win% desc (games tiebreak). Same rows, two orderings.
+  test("sortedRows 'games' mode: games desc, winPct as the tiebreak", () => {
+    const tie = [
+      { move: 10, games: 20, winPct: 40 },
+      { move: 20, games: 20, winPct: 70 }, // same games as 10 → higher winPct wins the tie
+      { move: 30, games: 5, winPct: 99 },
+    ];
+    expect(sortedRows(tie, 'games').map((r) => r.move)).toEqual([20, 10, 30]);
+    // default mode is 'games' (back-compat with the current single-arg callers)
+    expect(sortedRows(tie).map((r) => r.move)).toEqual([20, 10, 30]);
+  });
+
+  test("sortedRows 'winrate' mode: winPct desc primarily, games as the tiebreak", () => {
+    // winPct is the PRIMARY key: a 1-game 100% DOES sit above a 500-game 65%.
+    expect(sortedRows(NEXT_MOVES, 'winrate').map((r) => r.move)).toEqual([240, 200, 220]);
+    const tie = [
+      { move: 10, games: 5, winPct: 100 },
+      { move: 20, games: 500, winPct: 100 }, // same winPct → more games wins the tie
+    ];
+    expect(sortedRows(tie, 'winrate').map((r) => r.move)).toEqual([20, 10]);
+  });
+
   test('totalsRow sums games/wins and computes the aggregate win%', () => {
     expect(totalsRow(NEXT_MOVES)).toEqual({ games: 45, wins: 20, winPct: 44.4 });
   });
@@ -412,7 +437,11 @@ describe('HeatOverlay', () => {
     const ambient = container.querySelector('circle[data-canonical="180"]');
     expect(hovered.getAttribute('data-hover')).toBe('true');
     expect(ambient.getAttribute('data-hover')).toBe('false');
-    // full-opacity fill vs a dim ambient disc
+    // Ring-only highlight: the hovered disc stays STONE-SIZED (base r=5), never enlarged — the
+    // ring alone marks it (regression guard for the old r=7.8 hover-swell).
+    expect(hovered.getAttribute('r')).toBe('5');
+    expect(ambient.getAttribute('r')).toBe('5');
+    // full-opacity fill vs a dim ambient disc (colour pop is allowed; size is not)
     expect(Number(hovered.getAttribute('fill-opacity'))).toBe(1);
     expect(Number(ambient.getAttribute('fill-opacity'))).toBeLessThan(1);
     // a bright white high-contrast outline on the hovered cell
@@ -618,6 +647,131 @@ describe('uiSlice — heat toggle + hover cell', () => {
 
   test('selectHeatHoverCell defaults to null on a store without the ui slice', () => {
     expect(selectHeatHoverCell({})).toBeNull();
+  });
+
+  test("explorerSort defaults to 'games'; setExplorerSort switches it; selector reads it", () => {
+    const store = configureStore({ reducer: { ui: uiReducer } });
+    expect(selectExplorerSort(store.getState())).toBe('games');
+    store.dispatch(setExplorerSort('winrate'));
+    expect(selectExplorerSort(store.getState())).toBe('winrate');
+    store.dispatch(setExplorerSort('bogus')); // unknown value ignored — stays on the last valid mode
+    expect(selectExplorerSort(store.getState())).toBe('winrate');
+    store.dispatch(setExplorerSort('games'));
+    expect(selectExplorerSort(store.getState())).toBe('games');
+  });
+
+  test("selectExplorerSort defaults to 'games' on a store without the ui slice", () => {
+    expect(selectExplorerSort({})).toBe('games');
+  });
+});
+
+// ===================================================================================
+// Bidirectional hover + click-to-play on the board's suggestion discs (explorer feedback).
+//   - HeatOverlay discs are interactive (hover/click callbacks) and report the LOCAL move.
+//   - StatsRows lights the row whose move === the shared hoverCell (board-driven direction).
+//   - BoardHeatOverlay wires disc hover → setHeatHoverCell and disc click → applyMove(local).
+//   - ExplorerPanel's sort switch reorders the list; a row hover round-trips through the slice.
+// ===================================================================================
+describe('HeatOverlay — interactive discs (hover + click callbacks, LOCAL move)', () => {
+  const CELLS2 = [
+    { move: 180, winPct: 50 },
+    { move: 200, winPct: 80 },
+  ];
+
+  test('hovering a disc fires onCellEnter with its LOCAL move; leaving fires onCellLeave', () => {
+    const onEnter = vi.fn();
+    const onLeave = vi.fn();
+    const { container } = renderWith(
+      makeStore(),
+      <HeatOverlay cells={CELLS2} gridSize={N} rotation={0} onCellEnter={onEnter} onCellLeave={onLeave} />
+    );
+    const disc = container.querySelector('circle[data-canonical="200"]');
+    fireEvent.mouseEnter(disc);
+    expect(onEnter).toHaveBeenCalledWith(200);
+    fireEvent.mouseLeave(disc);
+    expect(onLeave).toHaveBeenCalled();
+  });
+
+  test('clicking a disc fires onCellClick with its LOCAL move (not the display cell)', () => {
+    const onClick = vi.fn();
+    // rotation 1 → the disc renders at a DIFFERENT display cell, but the click must report the
+    // LOCAL move (200), so applyMove needs no inverse-symmetry mapping.
+    const { container } = renderWith(
+      makeStore(),
+      <HeatOverlay cells={CELLS2} gridSize={N} rotation={1} onCellClick={onClick} />
+    );
+    const disc = container.querySelector('circle[data-canonical="200"]');
+    expect(disc.getAttribute('data-cell')).toBe(String(symCell(200, 1, N))); // display ≠ local
+    fireEvent.click(disc);
+    expect(onClick).toHaveBeenCalledWith(200);
+  });
+
+  test('the overlay container stays click-through (pointerEvents none) while discs opt back in', () => {
+    const { container } = renderWith(makeStore(), <HeatOverlay cells={CELLS2} gridSize={N} rotation={0} />);
+    expect(container.querySelector('[data-testid="heat-overlay"]').getAttribute('pointer-events')).toBe('none');
+    const disc = container.querySelector('circle[data-canonical="200"]');
+    expect(disc.style.pointerEvents).toBe('auto');
+  });
+});
+
+describe('StatsRows — programmatic hover highlight from the shared cell', () => {
+  test('the row whose move === hoverCell is highlighted (board-driven direction)', () => {
+    renderWith(makeStore(), <StatsRows rows={sortedRows(NEXT_MOVES)} gridSize={N} hoverCell={220} />);
+    expect(screen.getByTestId('stats-row-220').getAttribute('data-active-hover')).toBe('true');
+    expect(screen.getByTestId('stats-row-200').getAttribute('data-active-hover')).toBe('false');
+  });
+
+  test('no hoverCell → no row is programmatically highlighted', () => {
+    renderWith(makeStore(), <StatsRows rows={sortedRows(NEXT_MOVES)} gridSize={N} />);
+    expect(screen.getByTestId('stats-row-220').getAttribute('data-active-hover')).toBe('false');
+  });
+});
+
+describe('BoardHeatOverlay — disc drives the shared hover cell and plays on click', () => {
+  test('hovering a board disc dispatches setHeatHoverCell(localMove)', () => {
+    const store = makeBoardStore([180]); // rotation 0
+    const { container } = renderWith(store, <BoardHeatOverlay />);
+    const disc = container.querySelector('circle[data-canonical="200"]');
+    fireEvent.mouseEnter(disc);
+    expect(selectHeatHoverCell(store.getState())).toBe(200);
+    fireEvent.mouseLeave(disc);
+    expect(selectHeatHoverCell(store.getState())).toBeNull();
+  });
+
+  test('clicking a board disc plays that LOCAL move (click-to-play parity with a list row)', () => {
+    const store = makeBoardStore([180], 1); // rotation 1 — disc sits at a rotated display cell
+    const { container } = renderWith(store, <BoardHeatOverlay />);
+    const disc = container.querySelector('circle[data-canonical="200"]');
+    fireEvent.click(disc);
+    // LOCAL move applied (no inverse-symmetry): the line extends by 200, not symCell(200,1).
+    expect(selectActivePosition(store.getState()).moves).toEqual([180, 200]);
+  });
+});
+
+describe('ExplorerPanel — sort switch + bidirectional hover roundtrip', () => {
+  const order = () =>
+    Array.from(document.querySelectorAll('[data-testid^="stats-row-"]')).map((el) =>
+      el.getAttribute('data-testid')
+    );
+
+  test('the sort switch reorders the list between popularity and win rate', () => {
+    const store = makeScopedStore('archive'); // docs + ui, line [180], stats = NEXT_MOVES
+    renderWith(store, <ExplorerPanel />);
+    // default 'games' (popularity): games desc → 220, 200, 240
+    expect(order()).toEqual(['stats-row-220', 'stats-row-200', 'stats-row-240']);
+    fireEvent.click(screen.getByTestId('sort-winrate'));
+    // 'winrate': winPct desc → 240, 200, 220
+    expect(order()).toEqual(['stats-row-240', 'stats-row-200', 'stats-row-220']);
+    fireEvent.click(screen.getByTestId('sort-games'));
+    expect(order()).toEqual(['stats-row-220', 'stats-row-200', 'stats-row-240']);
+  });
+
+  test('hovering a list row lights that same row via the shared cell (row → slice → highlight)', () => {
+    const store = makeScopedStore('archive');
+    renderWith(store, <ExplorerPanel />);
+    fireEvent.mouseEnter(screen.getByTestId('stats-row-200'));
+    expect(selectHeatHoverCell(store.getState())).toBe(200);
+    expect(screen.getByTestId('stats-row-200').getAttribute('data-active-hover')).toBe('true');
   });
 });
 

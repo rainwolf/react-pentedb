@@ -41,13 +41,24 @@ function defaultThreats() {
 // mirroring selectAiPlay's stable `initialState.play` fallback.
 const EMPTY_THREATS = Object.freeze(defaultThreats());
 
+// Explorer candidate-list sort key: 'games' = popularity (games desc), 'winrate' = win% desc.
+// This ONLY reorders the list; the board heat colouring (by win%) is unaffected.
+const SORT_MODES = ['games', 'winrate'];
+
 const uiSlice = createSlice({
   name: 'ui',
   // `heatOnBoard` (explorer feedback rework): the green→red candidate heat is overlaid on the
   // REAL board by default; the ExplorerPanel switch turns it OFF. `heatHoverCell` is the shared
   // canonical hover cell — StatsRows onHover writes it, BoardHeatOverlay reads it — so hovering a
   // stats row lights that exact cell up brightly on the board.
-  initialState: { scope: 'archive', rotation: 0, threats: defaultThreats(), heatOnBoard: true, heatHoverCell: null },
+  initialState: {
+    scope: 'archive',
+    rotation: 0,
+    threats: defaultThreats(),
+    heatOnBoard: true,
+    heatHoverCell: null,
+    explorerSort: 'games',
+  },
   reducers: {
     setScope(state, action) {
       if (SCOPES.includes(action.payload)) state.scope = action.payload;
@@ -60,6 +71,11 @@ const uiSlice = createSlice({
     setHeatHoverCell(state, action) {
       const v = action.payload;
       state.heatHoverCell = v == null ? null : Number(v);
+    },
+    // Explorer candidate-list sort key. Unknown payloads are ignored so a stray value can't
+    // wedge the list into an empty/undefined ordering.
+    setExplorerSort(state, action) {
+      if (SORT_MODES.includes(action.payload)) state.explorerSort = action.payload;
     },
     // Set the board view orientation. Normalized into 0..7 so callers can pass a raw
     // "current + 1" without worrying about wraparound or a stray non-integer.
@@ -78,7 +94,8 @@ const uiSlice = createSlice({
   },
 });
 
-export const { setScope, setRotation, setThreatToggle, setHeatOnBoard, setHeatHoverCell } = uiSlice.actions;
+export const { setScope, setRotation, setThreatToggle, setHeatOnBoard, setHeatHoverCell, setExplorerSort } =
+  uiSlice.actions;
 
 // Defensive read: some tests build stores without the ui slice (docs-only reducers), so fall
 // back to 'archive' rather than crash when `state.ui` is absent.
@@ -111,6 +128,13 @@ export function selectHeatOnBoard(state) {
 export function selectHeatHoverCell(state) {
   const ui = state && state.ui;
   return ui && ui.heatHoverCell != null ? ui.heatHoverCell : null;
+}
+
+// Defensive: an absent ui slice OR a value predating this flag → 'games' (popularity), the
+// original default ordering, so older stores and single-arg callers stay unaffected.
+export function selectExplorerSort(state) {
+  const ui = state && state.ui;
+  return ui && SORT_MODES.includes(ui.explorerSort) ? ui.explorerSort : 'games';
 }
 
 // The EFFECTIVE scope every consumer must query with. mine/both require auth, so a lapsed

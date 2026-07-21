@@ -24,9 +24,16 @@ export function moveLabel(cell, n = 19) {
   return formatMove(cell, n);
 }
 
-// Candidate rows, ordered by popularity (games) descending. Copy first (never mutate props).
-export function sortedRows(nextMoves = []) {
-  return [...nextMoves].sort((a, b) => (b.games || 0) - (a.games || 0));
+// Candidate rows in the chosen order. Copy first (never mutate props).
+//   'games'   → popularity: games desc, win% as the tiebreak (the original default).
+//   'winrate' → win% desc PRIMARILY (a 1-game 100% does sit above a 500-game 65%), games as
+//               the tiebreak so equal win% falls back to the more-played line.
+// This ONLY reorders the list; the board heat colouring (by win%) is unchanged.
+export function sortedRows(nextMoves = [], mode = 'games') {
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const byGames = (a, b) => num(b.games) - num(a.games) || num(b.winPct) - num(a.winPct);
+  const byWinrate = (a, b) => num(b.winPct) - num(a.winPct) || num(b.games) - num(a.games);
+  return [...nextMoves].sort(mode === 'winrate' ? byWinrate : byGames);
 }
 
 // Aggregate of the listed continuations: total games, total wins, and the pooled win% (one
@@ -49,7 +56,13 @@ function WinBar({ winPct, domain }) {
   );
 }
 
-export default function StatsRows({ rows = [], gridSize = 19, onSelect = () => {}, onHover = () => {} }) {
+export default function StatsRows({
+  rows = [],
+  gridSize = 19,
+  onSelect = () => {},
+  onHover = () => {},
+  hoverCell = null,
+}) {
   const totals = totalsRow(rows);
   // Same normalization as HeatOverlay / BoardHeatOverlay: min→red, max→green over this set.
   const domain = heatDomain(rows.map((r) => r.winPct));
@@ -77,6 +90,7 @@ export default function StatsRows({ rows = [], gridSize = 19, onSelect = () => {
           role="button"
           tabIndex={0}
           data-testid={`stats-row-${r.move}`}
+          data-active-hover={hoverCell != null && r.move === hoverCell ? 'true' : 'false'}
           onClick={() => onSelect(r.move)}
           onMouseEnter={() => onHover(r.move)}
           onMouseLeave={() => onHover(null)}
@@ -89,6 +103,9 @@ export default function StatsRows({ rows = [], gridSize = 19, onSelect = () => {
             cursor: 'pointer',
             borderTop: 1,
             borderColor: 'divider',
+            // Board-driven highlight (pointer on the disc, not the row): same look as :hover, so
+            // board-driven and mouse-driven highlights are indistinguishable.
+            ...(hoverCell != null && r.move === hoverCell && { bgcolor: 'action.hover' }),
             '&:hover': { bgcolor: 'action.hover' },
           }}
         >

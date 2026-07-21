@@ -13,15 +13,18 @@
 // no api slice there is nothing to query, so we detect its absence and render nothing WITHOUT
 // ever invoking the query hook (which would otherwise require the api middleware/reducer). The
 // query hook lives in the inner BoardHeatData, mounted only once the api slice is present.
-import { useSelector } from 'react-redux';
+import { useCallback } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 
 import { usePositionStatsQuery, usePingQuery } from '../../app/api';
+import { applyMove } from '../../model/docSlice';
 import {
   selectScope,
   selectEffectiveScope,
   selectRotation,
   selectHeatOnBoard,
   selectHeatHoverCell,
+  setHeatHoverCell,
 } from '../../app/uiSlice';
 import { gridSizeForGame } from '../../board/boardGeometry';
 import useDebouncedPosition from './useDebouncedPosition';
@@ -30,10 +33,26 @@ import { usableCandidates } from './heatScale';
 
 // Inner: runs the position-stats query. Only mounted when the api slice exists (see below).
 function BoardHeatData() {
+  const dispatch = useDispatch();
   const on = useSelector(selectHeatOnBoard);
   const rotation = useSelector(selectRotation);
   const hoverCell = useSelector(selectHeatHoverCell);
   const pos = useDebouncedPosition(150);
+
+  // Board → list hover (symmetric with the list → board direction StatsRows already drives) and
+  // click-to-play, both keyed by the disc's LOCAL move (data-canonical). Enabling pointer events
+  // on a disc would otherwise swallow the board's own click on that empty candidate cell, so the
+  // disc's onClick restores click-to-play: applyMove(localMove) directly — the disc already knows
+  // its local move, so NO inverse-symmetry mapping and the display cell is never used.
+  const handleEnter = useCallback((cell) => dispatch(setHeatHoverCell(cell)), [dispatch]);
+  const handleLeave = useCallback(() => dispatch(setHeatHoverCell(null)), [dispatch]);
+  const handleClick = useCallback(
+    (cell) => {
+      dispatch(applyMove(cell));
+      dispatch(setHeatHoverCell(null));
+    },
+    [dispatch]
+  );
 
   // Same effective-scope coercion the ExplorerPanel uses, so the position-stats arg is identical
   // and RTK Query serves both from one cached request instead of firing a second one.
@@ -61,7 +80,17 @@ function BoardHeatData() {
   const cells = usableCandidates(nextMoves, moves);
   if (!on || !hasPos || cells.length === 0) return null;
 
-  return <HeatOverlay cells={cells} gridSize={gridSize} rotation={rotation} hoverCell={hoverCell} />;
+  return (
+    <HeatOverlay
+      cells={cells}
+      gridSize={gridSize}
+      rotation={rotation}
+      hoverCell={hoverCell}
+      onCellEnter={handleEnter}
+      onCellLeave={handleLeave}
+      onCellClick={handleClick}
+    />
+  );
 }
 
 export default function BoardHeatOverlay() {

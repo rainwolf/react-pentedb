@@ -36,7 +36,16 @@
 import { symCell } from '../viewer/boardSymmetry';
 import { heatColor, heatDomain, heatT } from './heatScale';
 
-export default function HeatOverlay({ cells = [], gridSize = 19, rotation = 0, hoverCell = null, size = '100%' }) {
+export default function HeatOverlay({
+  cells = [],
+  gridSize = 19,
+  rotation = 0,
+  hoverCell = null,
+  size = '100%',
+  onCellEnter = () => {},
+  onCellLeave = () => {},
+  onCellClick = () => {},
+}) {
   const n = gridSize;
   const span = 10 * (n + 1);
   // Normalize the win% across the shown set so the worst move reads red, the best green.
@@ -65,28 +74,38 @@ export default function HeatOverlay({ cells = [], gridSize = 19, rotation = 0, h
                 data-hover={isHover ? 'true' : 'false'}
                 cx={10 * x}
                 cy={10 * y}
-                // Base disc radius matches a real stone (Stone.js/SimpleStone.js draw r =
-                // size/2 = 5 in this same pre-group-scale local space, see boardGeometry
-                // note below) so a suggestion disc reads as stone-sized, not a smaller dot.
-                // The hover disc + its ring stay proportionally bigger/brighter (same ratios
-                // as before the resize) so the highlighted candidate still pops.
-                r={isHover ? 7.8 : 5}
+                // Radius ALWAYS matches a real stone (Stone.js/SimpleStone.js draw r = size/2 = 5
+                // in this same pre-group-scale local space) — hover NEVER enlarges the disc. The
+                // hover highlight is the RING alone (below) plus a full-opacity colour pop, so a
+                // hovered candidate stays exactly stone-sized, matching the played stones.
+                r={5}
                 fill={fill}
                 fillOpacity={isHover ? 1 : 0.66}
                 stroke={isHover ? '#ffffff' : 'rgba(15,12,10,0.5)'}
                 strokeWidth={isHover ? 1.4 : 0.3}
+                // Discs opt back INTO pointer events (the overlay container stays pass-through, so
+                // the rest of the board still receives clicks) to drive the shared hover cell and
+                // play on click. The loop's `move` is the LOCAL board move, so the click needs no
+                // inverse-symmetry mapping — never the display cell (`disp`).
+                style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                onMouseEnter={() => onCellEnter(move)}
+                onMouseLeave={() => onCellLeave(move)}
+                onClick={() => onCellClick(move)}
               />
               {isHover && (
-                // A bright white ring around the hovered disc — the "much brighter" pop.
+                // The bright white ring is the SOLE size cue for hover — it hugs the stone-sized
+                // disc (r=5) closely enough to read as a highlight without any disc swell. It is
+                // itself click-through so it never intercepts the disc's own hover/click.
                 <circle
                   data-testid="heat-hover-ring"
                   cx={10 * x}
                   cy={10 * y}
-                  r={10.3}
+                  r={7.8}
                   fill="none"
                   stroke="#ffffff"
                   strokeOpacity={0.95}
-                  strokeWidth={1.1}
+                  strokeWidth={1.3}
+                  style={{ pointerEvents: 'none' }}
                 />
               )}
             </g>
