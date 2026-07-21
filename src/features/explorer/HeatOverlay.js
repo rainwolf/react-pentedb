@@ -18,10 +18,10 @@
 // → VIEW via symCell(move, rotation, n) BEFORE it is positioned — exactly as BoardPane maps its
 // move list. `hoverCell` is compared in canonical space (it is the row's canonical move).
 //
-// HOVER = MUCH BRIGHTER. The hovered / selected candidate is deliberately loud: a bigger,
-// FULL-opacity disc, a bright white outline, and a second white ring drawn around it so it
-// clearly pops out of the ambient (dim, dark-edged) heat. Hovering a StatsRows row lights that
-// exact cell up on the real board.
+// HOVER = MUCH BRIGHTER. The hovered / selected candidate is deliberately loud: a FULL-opacity
+// disc, a bright white outline, and a second white ring drawn INSIDE its edge so it clearly pops
+// out of the ambient (dim, dark-edged) heat WITHOUT ever growing past a stone's footprint. Hovering
+// a StatsRows row lights that exact cell up on the real board.
 //
 // Geometry (registration): the overlay SVG shares the board's viewBox, so its inner group
 // reproduces the board's transform stack — translate(14.5,14.5) scale(0.95) — placing a circle
@@ -35,6 +35,10 @@
 
 import { symCell } from '../viewer/boardSymmetry';
 import { heatColor, heatDomain, heatT } from './heatScale';
+
+// Stroke width of the hover highlight ring. Its radius is derived as 5 - this/2 so the stroke's
+// OUTER edge sits exactly at r=5 (the disc edge) — see the render comment below.
+const HOVER_RING_STROKE_WIDTH = 1.5;
 
 export default function HeatOverlay({
   cells = [],
@@ -76,8 +80,8 @@ export default function HeatOverlay({
                 cy={10 * y}
                 // Radius ALWAYS matches a real stone (Stone.js/SimpleStone.js draw r = size/2 = 5
                 // in this same pre-group-scale local space) — hover NEVER enlarges the disc. The
-                // hover highlight is the RING alone (below) plus a full-opacity colour pop, so a
-                // hovered candidate stays exactly stone-sized, matching the played stones.
+                // hover highlight is an INSET white border (below) plus a full-opacity colour pop,
+                // so a hovered candidate stays exactly stone-sized, matching the played stones.
                 r={5}
                 fill={fill}
                 fillOpacity={isHover ? 1 : 0.66}
@@ -93,18 +97,21 @@ export default function HeatOverlay({
                 onClick={() => onCellClick(move)}
               />
               {isHover && (
-                // The bright white ring is the SOLE size cue for hover — it hugs the stone-sized
-                // disc (r=5) closely enough to read as a highlight without any disc swell. It is
-                // itself click-through so it never intercepts the disc's own hover/click.
+                // The bright white highlight is drawn INSIDE the disc's edge, not around it: an
+                // SVG stroke straddles its path equally on both sides, so a stroke of width w at
+                // radius (5 - w/2) has its OUTER edge land exactly at r=5 — the disc's own edge.
+                // The result reads as an inner border, and the hovered footprint never exceeds a
+                // stone's. It is itself click-through so it never intercepts the disc's own
+                // hover/click.
                 <circle
                   data-testid="heat-hover-ring"
                   cx={10 * x}
                   cy={10 * y}
-                  r={7.8}
+                  r={5 - HOVER_RING_STROKE_WIDTH / 2}
                   fill="none"
                   stroke="#ffffff"
                   strokeOpacity={0.95}
-                  strokeWidth={1.3}
+                  strokeWidth={HOVER_RING_STROKE_WIDTH}
                   style={{ pointerEvents: 'none' }}
                 />
               )}

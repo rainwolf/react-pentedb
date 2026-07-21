@@ -437,8 +437,8 @@ describe('HeatOverlay', () => {
     const ambient = container.querySelector('circle[data-canonical="180"]');
     expect(hovered.getAttribute('data-hover')).toBe('true');
     expect(ambient.getAttribute('data-hover')).toBe('false');
-    // Ring-only highlight: the hovered disc stays STONE-SIZED (base r=5), never enlarged — the
-    // ring alone marks it (regression guard for the old r=7.8 hover-swell).
+    // Inner-border highlight: the hovered disc stays STONE-SIZED (base r=5), never enlarged —
+    // regression guard for the old outer r=7.8 hover-swell ring.
     expect(hovered.getAttribute('r')).toBe('5');
     expect(ambient.getAttribute('r')).toBe('5');
     // full-opacity fill vs a dim ambient disc (colour pop is allowed; size is not)
@@ -446,8 +446,14 @@ describe('HeatOverlay', () => {
     expect(Number(ambient.getAttribute('fill-opacity'))).toBeLessThan(1);
     // a bright white high-contrast outline on the hovered cell
     expect(hovered.getAttribute('stroke').toLowerCase()).toBe('#ffffff');
-    // ...and a dedicated bright ring marker that pops the cell out
-    expect(container.querySelector('[data-testid="heat-hover-ring"]')).toBeTruthy();
+    // ...and a dedicated bright highlight ring, drawn INSIDE the disc edge (radius < 5) so its
+    // outer edge lands at (about) the disc's own r=5 — an inner border, never a footprint swell.
+    const ring = container.querySelector('[data-testid="heat-hover-ring"]');
+    expect(ring).toBeTruthy();
+    const ringRadius = Number(ring.getAttribute('r'));
+    expect(ringRadius).toBeLessThan(5);
+    const strokeWidth = Number(ring.getAttribute('stroke-width'));
+    expect(ringRadius + strokeWidth / 2).toBeCloseTo(5, 5);
   });
 
   test('at rotation 0 a ghost sits on its canonical cell', () => {
