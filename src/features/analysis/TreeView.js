@@ -9,9 +9,18 @@
 // strip). Right-click or a touch long-press opens a node menu to promote the variation or delete
 // the branch (the latter behind a confirm dialog); the cursor-to-parent move on delete lives in
 // the docSlice reducer, so the menu just dispatches the intent.
+//
+// A toolbar "Delete branch" button (fb15) sits in the header next to the export menu, so branch
+// deletion is discoverable without needing to know about right-click/long-press. It targets the
+// CURRENT CURSOR node and shares the exact same confirm-dialog state as the context menu (both
+// funnel through requestDelete) — one dialog, two entry points. Disabled at the root (cursorPath
+// []), where deleteBranch is a no-op. The long-press timer is also cleared on unmount so it can't
+// fire setState after the component is gone.
 import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Dialog from '@mui/material/Dialog';
@@ -20,6 +29,7 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { alpha, useTheme } from '@mui/material/styles';
 
 import { navTo, promoteVariation, deleteBranch } from '../../model/docSlice';
@@ -70,6 +80,10 @@ export default function TreeView() {
     }
   }, [tabId, cursorKey]);
 
+  // Unmount cleanup (fb14 nit): a pending long-press timer must not fire setMenu after this
+  // component is gone (tab closed / switched away mid-press).
+  useEffect(() => () => clearTimeout(longPressRef.current), []);
+
   if (!activeTab) return null;
   const { tree, cursorPath, game } = activeTab;
   const size = gridSizeForGame(game);
@@ -88,6 +102,10 @@ export default function TreeView() {
   };
   const cancelLongPress = () => clearTimeout(longPressRef.current);
 
+  // Shared by both delete entry points (toolbar button + context-menu item) so there is exactly
+  // one confirm dialog regardless of how the delete was requested.
+  const requestDelete = (path) => setConfirm({ path });
+
   const handlePromote = () => {
     dispatch(promoteVariation(menu.path));
     closeMenu();
@@ -95,7 +113,7 @@ export default function TreeView() {
   const handleDeleteRequest = () => {
     const path = menu.path;
     closeMenu();
-    setConfirm({ path });
+    requestDelete(path);
   };
   const handleConfirmDelete = () => {
     dispatch(deleteBranch(confirm.path));
@@ -139,7 +157,19 @@ export default function TreeView() {
 
   return (
     <Box data-testid="tree-view" sx={{ px: 1, py: 0.5, overflow: 'auto', maxHeight: 220 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+        <Tooltip title="Delete branch">
+          <span>
+            <IconButton
+              size="small"
+              aria-label="Delete branch"
+              disabled={cursorPath.length === 0}
+              onClick={() => requestDelete(cursorPath)}
+            >
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
         <ExportMenu label="Export tree" size="small" />
       </Box>
 

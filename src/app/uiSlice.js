@@ -17,6 +17,12 @@
 // `threats` (P4 Task 4) is the per-player × {trias, fours, potential captures} visibility
 // grid for the threat overlay, toggled from ThreatsPanel and read by ThreatBands.
 //
+// `treeExpanded` (fb15) is whether the analysis tray (TagBar + variation TreeView +
+// CommentBox) is shown beneath the move strip. Lifted out of MoveStrip's local useState so it
+// is remembered across tab switches, same as the other cross-panel toggles here. Defaults to
+// TRUE — the tree is the primary analysis surface and should be visible without an extra click;
+// the toggle button still lets the user collapse it.
+//
 // This lives in its own module (not store.js) so components and tests can import the actions
 // and selector without pulling in the real api slice — tests that mock '../../app/api' would
 // otherwise crash when store.js references `api.reducer`.
@@ -58,10 +64,16 @@ const uiSlice = createSlice({
     heatOnBoard: true,
     heatHoverCell: null,
     explorerSort: 'games',
+    treeExpanded: true,
   },
   reducers: {
     setScope(state, action) {
       if (SCOPES.includes(action.payload)) state.scope = action.payload;
+    },
+    // Show / hide the analysis tray (tag bar + variation tree + comment box) beneath the move
+    // strip. Defaults to true (see initialState comment) — this only handles explicit toggles.
+    setTreeExpanded(state, action) {
+      state.treeExpanded = !!action.payload;
     },
     // Show / hide the candidate heat overlay on the real board.
     setHeatOnBoard(state, action) {
@@ -94,8 +106,15 @@ const uiSlice = createSlice({
   },
 });
 
-export const { setScope, setRotation, setThreatToggle, setHeatOnBoard, setHeatHoverCell, setExplorerSort } =
-  uiSlice.actions;
+export const {
+  setScope,
+  setRotation,
+  setThreatToggle,
+  setHeatOnBoard,
+  setHeatHoverCell,
+  setExplorerSort,
+  setTreeExpanded,
+} = uiSlice.actions;
 
 // Defensive read: some tests build stores without the ui slice (docs-only reducers), so fall
 // back to 'archive' rather than crash when `state.ui` is absent.
@@ -135,6 +154,14 @@ export function selectHeatHoverCell(state) {
 export function selectExplorerSort(state) {
   const ui = state && state.ui;
   return ui && SORT_MODES.includes(ui.explorerSort) ? ui.explorerSort : 'games';
+}
+
+// Defensive: absent ui slice OR a store predating this flag → true. The analysis tray is
+// shown by default (fb15); only an explicit `false` from the toggle hides it. Mirrors
+// selectHeatOnBoard's fallback-to-true shape.
+export function selectTreeExpanded(state) {
+  const ui = state && state.ui;
+  return ui && ui.treeExpanded === false ? false : true;
 }
 
 // The EFFECTIVE scope every consumer must query with. mine/both require auth, so a lapsed

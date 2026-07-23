@@ -6,7 +6,10 @@
 //   - promote reorders a node's kids (new mainline) and keeps the cursor on its node
 //   - delete removes the subtree and moves the cursor to the parent (with a confirm dialog)
 //   - CommentBox autosaves to state after the 500ms debounce (fake timers)
-//   - the MoveStrip expand-tree toggle reveals the TreeView
+//   - the MoveStrip's tree tray is SHOWN BY DEFAULT (fb15) and the toggle still hides/re-shows it
+//   - a visible toolbar "Delete branch" button (fb15) — disabled at the root, shares the SAME
+//     confirm dialog as the node context-menu's "Delete branch"
+//   - the long-press timer is cleared on unmount (fb14 nit) — no post-unmount setState
 import { describe, test, expect, vi, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';
@@ -20,6 +23,7 @@ import docsReducer, {
   deleteBranch,
   selectActivePosition,
 } from '../../model/docSlice';
+import uiReducer, { setTreeExpanded, selectTreeExpanded } from '../../app/uiSlice';
 import {
   createTree,
   addMove,
@@ -57,7 +61,9 @@ function fixture() {
 }
 
 function makeStore(tree, cursorPath = [], game = 1) {
-  const store = configureStore({ reducer: { docs: docsReducer } });
+  // `ui` is wired in (fb15) so MoveStrip's treeExpanded selector/dispatch works against a real
+  // reducer rather than just the defensive no-slice fallback.
+  const store = configureStore({ reducer: { docs: docsReducer, ui: uiReducer } });
   store.dispatch(openTab({ id: 't', kind: 'analysis', title: 'A', game, tree, cursorPath }));
   return store;
 }
@@ -236,6 +242,27 @@ describe('TreeView (render)', () => {
     }
   });
 
+  // fb14 nit: the long-press timer was cleared on touch-end/move but had NO unmount cleanup —
+  // a pending timer could fire setState after the component was gone. Asserted directly against
+  // clearTimeout (rather than console.error, which React 18 no longer emits for a post-unmount
+  // setState — that warning was dropped, so it wouldn't distinguish fixed from unfixed here):
+  // starting a long-press then unmounting must clear the pending timer.
+  test('clears the long-press timer on unmount', () => {
+    vi.useFakeTimers();
+    const clearSpy = vi.spyOn(global, 'clearTimeout');
+    try {
+      const store = makeStore(fixture(), []);
+      const { unmount } = renderWith(store, <TreeView />);
+      fireEvent.touchStart(screen.getByText('H14'), { touches: [{ clientX: 0, clientY: 0 }] }); // move 102
+      const callsBeforeUnmount = clearSpy.mock.calls.length;
+      unmount();
+      expect(clearSpy.mock.calls.length).toBeGreaterThan(callsBeforeUnmount);
+    } finally {
+      clearSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   test('renders the board coordinate for a move (180 -> K10, the coords.js worked example)', () => {
     const { tree } = addMove(createTree(), [], 180);
     const store = makeStore(tree, []);
@@ -289,6 +316,50 @@ describe('TreeView (render)', () => {
     const store = makeStore(tree, [], 31); // game 31 -> gridSizeForGame = 15 (Renju)
     expect(() => renderWith(store, <TreeView />)).not.toThrow();
     expect(screen.getByText('PASS')).toBeTruthy();
+  });
+});
+
+// --- TreeView toolbar: Delete branch button (fb15) ------------------------------
+// Branch deletion previously only existed via the node context-menu/long-press — not
+// discoverable. This is a small, always-visible toolbar button next to ExportMenu, gated on
+// the SAME cursor-node-deletable rule as the reducer (root is a no-op) and routed through the
+// SAME confirm-dialog state as the context menu, so there is exactly one delete confirmation
+// UI regardless of entry point.
+describe('TreeView toolbar — Delete branch button', () => {
+  test('is disabled at the root (cursor has no move)', () => {
+    const store = makeStore(fixture(), []);
+    renderWith(store, <TreeView />);
+    expect(screen.getByRole('button', { name: 'Delete branch' }).disabled).toBe(true);
+  });
+
+  test('is enabled on a move node; clicking opens the confirm dialog; confirming deletes at the cursor', () => {
+    const store = makeStore(fixture(), [0, 0]); // cursor on 101
+    renderWith(store, <TreeView />);
+    const btn = screen.getByRole('button', { name: 'Delete branch' });
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(screen.getByText('Delete branch?')).toBeTruthy(); // the shared confirm dialog
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(nodeAt(treeOf(store), [0]).kids).toHaveLength(1);
+    expect(cursorOf(store)).toEqual([0]); // cursor moved to the deleted node's parent (docSlice reducer)
+  });
+
+  test('cancelling from the toolbar button leaves the tree unchanged', () => {
+    const store = makeStore(fixture(), [0, 0]);
+    renderWith(store, <TreeView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete branch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(nodeAt(treeOf(store), [0]).kids).toHaveLength(2); // still 101 + 102
+  });
+
+  test('the context-menu delete still works and shares the same confirm dialog', () => {
+    const store = makeStore(fixture(), []);
+    renderWith(store, <TreeView />);
+    fireEvent.contextMenu(screen.getByText('G14')); // move 101, via the node menu (not the toolbar)
+    fireEvent.click(screen.getByText('Delete branch')); // the menu item (role=menuitem, distinct from the toolbar button)
+    expect(screen.getByText('Delete branch?')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(nodeAt(treeOf(store), [0]).kids).toHaveLength(1);
   });
 });
 
@@ -350,15 +421,37 @@ describe('CommentBox', () => {
   });
 });
 
-// --- MoveStrip toggle ----------------------------------------------------------
-describe('MoveStrip expand-tree toggle', () => {
-  test('reveals the variation tree when toggled', () => {
+// --- uiSlice: treeExpanded (fb15) ------------------------------------------------
+describe('uiSlice — treeExpanded', () => {
+  test('defaults to true; setTreeExpanded toggles it; selector reads it', () => {
+    const store = configureStore({ reducer: { ui: uiReducer } });
+    expect(selectTreeExpanded(store.getState())).toBe(true);
+    store.dispatch(setTreeExpanded(false));
+    expect(selectTreeExpanded(store.getState())).toBe(false);
+    store.dispatch(setTreeExpanded(true));
+    expect(selectTreeExpanded(store.getState())).toBe(true);
+  });
+
+  test('selectTreeExpanded defaults to true on a store without the ui slice', () => {
+    expect(selectTreeExpanded({})).toBe(true);
+  });
+});
+
+// --- MoveStrip toggle (fb15: tree tray is SHOWN BY DEFAULT) ---------------------
+describe('MoveStrip — variation tree default + toggle', () => {
+  test('the variation tree is shown by default (no click needed)', () => {
     const store = makeStore(fixture(), [0, 0]);
     renderWith(store, <MoveStrip />);
-    expect(screen.queryByTestId('tree-view')).toBeNull();
-    fireEvent.click(screen.getByLabelText('Show variation tree'));
+    expect(screen.getByTestId('tree-view')).toBeTruthy();
+  });
+
+  test('toggling hides the tree, and toggling again re-shows it', () => {
+    const store = makeStore(fixture(), [0, 0]);
+    renderWith(store, <MoveStrip />);
     expect(screen.getByTestId('tree-view')).toBeTruthy();
     fireEvent.click(screen.getByLabelText('Hide variation tree'));
     expect(screen.queryByTestId('tree-view')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Show variation tree'));
+    expect(screen.getByTestId('tree-view')).toBeTruthy();
   });
 });

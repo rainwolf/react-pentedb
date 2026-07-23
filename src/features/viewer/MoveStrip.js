@@ -3,7 +3,10 @@
 // with its alternative-continuation count. Clicking a chip jumps the cursor there (navTo).
 // A leading toggle expands the analysis tray beneath the strip — tag bar, variation TreeView,
 // and comment editor — all of which read/write the active tab's cursor node via docSlice.
-import { useState } from 'react';
+//
+// The tray's shown/hidden state (fb15) lives in the ui slice (treeExpanded, default TRUE — the
+// tree is the primary analysis surface) rather than local useState, so it is remembered across
+// tab switches like the other cross-panel toggles there.
 import { useDispatch, useSelector } from 'react-redux';
 import Stack from '@mui/material/Stack';
 import Chip from '@mui/material/Chip';
@@ -11,6 +14,7 @@ import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { navTo } from '../../model/docSlice';
+import { setTreeExpanded, selectTreeExpanded } from '../../app/uiSlice';
 import TreeView from '../analysis/TreeView';
 import TagBar from '../analysis/TagBar';
 import CommentBox from '../analysis/CommentBox';
@@ -57,7 +61,7 @@ export function buildStripItems(tree, cursorPath) {
 
 export default function MoveStrip() {
   const dispatch = useDispatch();
-  const [expanded, setExpanded] = useState(false);
+  const expanded = useSelector(selectTreeExpanded);
   const activeTab = useSelector((s) => s.docs.tabs.find((t) => t.id === s.docs.activeTabId) || null);
   if (!activeTab) return null;
   const items = buildStripItems(activeTab.tree, activeTab.cursorPath);
@@ -76,7 +80,7 @@ export default function MoveStrip() {
           aria-label={expanded ? 'Hide variation tree' : 'Show variation tree'}
           aria-pressed={expanded}
           color={expanded ? 'primary' : 'default'}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => dispatch(setTreeExpanded(!expanded))}
         >
           <AccountTreeIcon fontSize="small" />
         </IconButton>

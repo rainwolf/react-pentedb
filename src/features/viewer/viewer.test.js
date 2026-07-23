@@ -22,7 +22,7 @@ import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import docsReducer, { openTab, navPrev, selectActivePosition } from '../../model/docSlice';
-import uiReducer from '../../app/uiSlice';
+import uiReducer, { setTreeExpanded } from '../../app/uiSlice';
 import { createTree, addMove } from '../../model/gameTree';
 
 const boardMock = vi.hoisted(() => ({ lastProps: null }));
@@ -313,6 +313,9 @@ describe('MoveStrip', () => {
 
   test('renders a +n variation badge and navigates on chip click', () => {
     const store = makeStore([180, 200], [0, 0], 1, [{ at: [0], move: 205 }]);
+    // This test only cares about the strip's own chip row; collapse the tray so the tree
+    // (which repeats the same coordinate labels) doesn't produce ambiguous text matches.
+    store.dispatch(setTreeExpanded(false));
     renderWith(store, <MoveStrip />);
     expect(screen.getByText('+1')).toBeTruthy();
 
@@ -322,6 +325,7 @@ describe('MoveStrip', () => {
 
   test('shows board coordinates for a line, not raw cell numbers (180 -> K10, 200 -> L9)', () => {
     const store = makeStore([180, 200], [0, 0]);
+    store.dispatch(setTreeExpanded(false));
     renderWith(store, <MoveStrip />);
     expect(screen.getByText('K10')).toBeTruthy();
     expect(screen.getByText('L9')).toBeTruthy();
@@ -343,6 +347,7 @@ describe('MoveStrip', () => {
 
   test('renders a 13x13 game (id 23) move as its 13-board coordinate, not the 19-board one', () => {
     const store = makeStore([84], [0], 23); // game 23 -> gridSizeForGame = 13
+    store.dispatch(setTreeExpanded(false));
     renderWith(store, <MoveStrip />);
     expect(screen.getByText('G7')).toBeTruthy();
     expect(screen.queryByText('J15')).toBeNull(); // would appear if 19 were used instead
@@ -361,12 +366,14 @@ describe('MoveStrip', () => {
 
   test('a 13x13 game (id 23) with a pass move renders "PASS" instead of crashing', () => {
     const store = makeStore([13 * 13], [0], 23); // 169 = pass sentinel for a 13-board
+    store.dispatch(setTreeExpanded(false));
     expect(() => renderWith(store, <MoveStrip />)).not.toThrow();
     expect(screen.getByText('PASS')).toBeTruthy();
   });
 
   test('a Renju game (id 31, 15x15) with a pass move renders "PASS" instead of crashing', () => {
     const store = makeStore([15 * 15], [0], 31); // game 31 -> gridSizeForGame = 15 (Renju)
+    store.dispatch(setTreeExpanded(false));
     expect(() => renderWith(store, <MoveStrip />)).not.toThrow();
     expect(screen.getByText('PASS')).toBeTruthy();
   });
