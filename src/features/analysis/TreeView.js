@@ -1,14 +1,17 @@
-// Variation tree under the move strip: the mainline laid out horizontally, each variation
-// indented on its own row (a recursive flatten of the gameTree kids). Chips show the move as
-// a human-readable board coordinate (cellToAlpha, src/export/coords.js) plus any annotation
-// glyphs. Clicking a chip moves the cursor (navTo); right-click or a
-// touch long-press opens a node menu to promote the variation or delete the branch (the
-// latter behind a confirm dialog). The cursor-to-parent move on delete lives in the docSlice
-// reducer, so the menu just dispatches the intent.
-import { useRef, useState } from 'react';
+// Variation tree under the move strip, drawn as a real SGF-style node-and-edge diagram (fb14):
+// the mainline runs left→right as a row of pill nodes joined by a straight rail; each variation
+// branches DOWNWARD onto its own lane, connected by an elbow. Geometry comes from the pure,
+// tested layoutTree (treeLayout.js) — this file is only the SVG view + interactions.
+//
+// Each node shows its board coordinate (formatMove, src/export/coords.js — null-safe, renders
+// the pass sentinel as "PASS") plus any annotation glyphs. Clicking a node moves the cursor
+// (navTo); the current cursor node is highlighted with the filled accent (matching the move
+// strip). Right-click or a touch long-press opens a node menu to promote the variation or delete
+// the branch (the latter behind a confirm dialog); the cursor-to-parent move on delete lives in
+// the docSlice reducer, so the menu just dispatches the intent.
+import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Dialog from '@mui/material/Dialog';
@@ -17,55 +20,26 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
+import { alpha, useTheme } from '@mui/material/styles';
 
 import { navTo, promoteVariation, deleteBranch } from '../../model/docSlice';
 import ExportMenu from '../exchange/ExportMenu';
 import { formatMove } from '../../export/coords';
 import { gridSizeForGame } from '../../board/boardGeometry';
+import { layoutTree, startPoint, GEO } from './treeLayout';
 
 const LONG_PRESS_MS = 500;
 
-// Pure: flatten `tree` into display rows. Each row is one line of play — { indent, items } —
-// where items are { m, path, tags } in left-to-right order. The mainline (following kids[0]
-// from the root) is row 0 at indent 0; every alternative kid (index >= 1) starts a new, more
-// deeply indented row, emitted depth-first after the line that branches to it. The root node
-// (m === null) carries no chip but still seeds the first line and its root-level variations.
-export function buildTreeRows(tree) {
-  const rows = [];
-  if (!tree || !tree.root) return rows;
-
-  const emitLine = (startNode, startPath, indent) => {
-    const items = [];
-    const pending = [];
-    let node = startNode;
-    let path = startPath;
-    while (node) {
-      if (node.m !== null) items.push({ m: node.m, path, tags: node.tags });
-      for (let i = 1; i < node.kids.length; i++) {
-        pending.push({ node: node.kids[i], path: [...path, i], indent: indent + 1 });
-      }
-      if (node.kids.length === 0) break;
-      node = node.kids[0];
-      path = [...path, 0];
-    }
-    rows.push({ indent, items });
-    for (const p of pending) emitLine(p.node, p.path, p.indent);
-  };
-
-  emitLine(tree.root, [], 0);
-  return rows;
-}
+const pathKey = (p) => p.join('.');
 
 function samePath(a, b) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-// item.m is a flat cell (board-relative: move % gridSize, see GameClass) for every non-root
-// node reaching this label; the root node (m === null) is filtered out of buildTreeRows before
-// it ever gets here, and formatMove is null-safe regardless. formatMove also renders the pass
-// sentinel (gridSize*gridSize, shared by Go and Renju passes) as "PASS" instead of throwing.
-// `size` must match the active game's board (gridSizeForGame) — small Go/Renju variants
-// (9x9/13x13/15x15) are narrower than 19.
+// Node label: the board coordinate plus any annotation glyphs (e.g. "G14 !"). formatMove is
+// null-safe (root -> '') and renders the pass sentinel (gridSize*gridSize, shared by Go and
+// Renju) as "PASS" instead of throwing. `size` must match the active game's board
+// (gridSizeForGame) — small Go/Renju variants (9x9/13x13/15x15) are narrower than 19.
 export function chipLabel(item, size = 19) {
   const label = formatMove(item.m, size);
   return item.tags && item.tags.length ? `${label} ${item.tags.join('')}` : label;
@@ -73,19 +47,37 @@ export function chipLabel(item, size = 19) {
 
 export default function TreeView() {
   const dispatch = useDispatch();
+  const theme = useTheme();
   const activeTab = useSelector((s) => s.docs.tabs.find((t) => t.id === s.docs.activeTabId) || null);
   const [menu, setMenu] = useState(null); // { anchorEl, path }
   const [confirm, setConfirm] = useState(null); // { path }
   const longPressRef = useRef(null);
+  const cursorRef = useRef(null); // the <g> of the current cursor node, for scroll-into-view
+
+  const tabId = activeTab ? activeTab.id : null;
+  const cursorKey = activeTab ? pathKey(activeTab.cursorPath) : '';
+
+  // Keep the current node visible when the cursor moves (nice-to-have). Guarded for jsdom, which
+  // doesn't implement scrollIntoView.
+  useEffect(() => {
+    const el = cursorRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      try {
+        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch {
+        /* not implemented in the test environment */
+      }
+    }
+  }, [tabId, cursorKey]);
 
   if (!activeTab) return null;
   const { tree, cursorPath, game } = activeTab;
   const size = gridSizeForGame(game);
-  const rows = buildTreeRows(tree);
+  const { nodes, edges, width, height } = layoutTree(tree);
+  const nodeByPath = new Map(nodes.map((n) => [pathKey(n.path), n]));
 
   const openMenu = (anchorEl, path) => setMenu({ anchorEl, path });
   const closeMenu = () => setMenu(null);
-
   const handleContextMenu = (e, path) => {
     e.preventDefault();
     openMenu(e.currentTarget, path);
@@ -110,49 +102,134 @@ export default function TreeView() {
     setConfirm(null);
   };
 
+  // Theme-aware ink. The mainline is the confident teal "rail"; variations are quieter elbows in
+  // secondary ink — emphasis without a second bold colour. The cursor node is the one filled,
+  // accented element (matching the move strip's cursor chip).
+  const mainStroke = alpha(theme.palette.primary.main, 0.55);
+  const varStroke = alpha(theme.palette.text.secondary, 0.4);
+  const start = startPoint();
+
+  const edgePath = (e) => {
+    const c = nodeByPath.get(pathKey(e.toPath));
+    if (!c) return null;
+    const toX = c.x; // child's left edge
+    const toY = c.y + GEO.NODE_H / 2; // child's vertical centre
+    let fromX;
+    let fromY;
+    if (e.fromPath.length === 0) {
+      // Springs from the start marker (the first move, or a variation off the root).
+      fromX = start.x;
+      fromY = start.y;
+    } else {
+      const p = nodeByPath.get(pathKey(e.fromPath));
+      if (!p) return null;
+      if (e.kind === 'main') {
+        fromX = p.x + GEO.NODE_W; // parent's right edge
+        fromY = p.y + GEO.NODE_H / 2;
+      } else {
+        fromX = p.x + GEO.NODE_W / 2; // parent's bottom-centre
+        fromY = p.y + GEO.NODE_H;
+      }
+    }
+    // main: a straight line on the shared row. variation: down then right — the elbow.
+    return e.kind === 'main'
+      ? `M ${fromX} ${fromY} L ${toX} ${toY}`
+      : `M ${fromX} ${fromY} V ${toY} H ${toX}`;
+  };
+
   return (
     <Box data-testid="tree-view" sx={{ px: 1, py: 0.5, overflow: 'auto', maxHeight: 220 }}>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 0.5 }}>
         <ExportMenu label="Export tree" size="small" />
       </Box>
-      {rows.map((row, ri) => (
-        <Box
-          key={`row-${ri}-${row.items.map((it) => it.path.join('.')).join('_')}`}
-          sx={{
-            display: 'flex',
-            flexDirection: 'row',
-            flexWrap: 'nowrap',
-            alignItems: 'center',
-            gap: 0.5,
-            pl: row.indent * 2,
-            py: 0.25,
-          }}
-        >
-          {row.items.map((it) => {
-            const isCursor = samePath(it.path, cursorPath);
+
+      <Box
+        sx={{
+          '& .tv-node': { cursor: 'pointer' },
+          '& .tv-node:hover .tv-node-box': { stroke: theme.palette.primary.main },
+        }}
+      >
+        <svg width={width} height={height} role="img" aria-label="Variation tree" style={{ display: 'block' }}>
+          {/* Connectors first, so nodes paint on top of the lines. */}
+          {edges.map((e) => {
+            const d = edgePath(e);
+            if (!d) return null;
             return (
-              <Chip
-                key={it.path.join('-')}
-                size="small"
-                color={isCursor ? 'primary' : 'default'}
-                variant={isCursor ? 'filled' : 'outlined'}
-                label={chipLabel(it, size)}
-                onClick={() => dispatch(navTo(it.path))}
-                onContextMenu={(e) => handleContextMenu(e, it.path)}
-                onTouchStart={(e) => startLongPress(e.currentTarget, it.path)}
-                onTouchEnd={cancelLongPress}
-                onTouchMove={cancelLongPress}
+              <path
+                key={`${pathKey(e.fromPath)}>${pathKey(e.toPath)}`}
+                data-testid="tree-edge"
+                data-kind={e.kind}
+                d={d}
+                fill="none"
+                stroke={e.kind === 'main' ? mainStroke : varStroke}
+                strokeWidth={e.kind === 'main' ? 2 : 1.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
             );
           })}
-        </Box>
-      ))}
 
-      <Menu
-        open={Boolean(menu)}
-        anchorEl={menu ? menu.anchorEl : null}
-        onClose={closeMenu}
-      >
+          {/* The empty-board origin. */}
+          <circle cx={start.x} cy={start.y} r={3} fill={varStroke} />
+
+          {nodes.map((n) => {
+            const isCursor = samePath(n.path, cursorPath);
+            const label = chipLabel(n, size);
+            return (
+              <g
+                key={pathKey(n.path)}
+                ref={isCursor ? cursorRef : undefined}
+                className="tv-node"
+                data-testid={`tree-node-${n.path.join('-')}`}
+                data-cursor={isCursor ? 'true' : 'false'}
+                role="button"
+                tabIndex={0}
+                aria-label={label}
+                aria-current={isCursor ? 'true' : undefined}
+                onClick={() => dispatch(navTo(n.path))}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    dispatch(navTo(n.path));
+                  }
+                }}
+                onContextMenu={(ev) => handleContextMenu(ev, n.path)}
+                onTouchStart={(ev) => startLongPress(ev.currentTarget, n.path)}
+                onTouchEnd={cancelLongPress}
+                onTouchMove={cancelLongPress}
+              >
+                <rect
+                  className="tv-node-box"
+                  x={n.x}
+                  y={n.y}
+                  width={GEO.NODE_W}
+                  height={GEO.NODE_H}
+                  rx={GEO.NODE_H / 2}
+                  ry={GEO.NODE_H / 2}
+                  fill={isCursor ? theme.palette.primary.main : theme.palette.background.paper}
+                  stroke={isCursor ? theme.palette.primary.main : theme.palette.divider}
+                  strokeWidth={isCursor ? 0 : 1}
+                  style={{ transition: 'fill 120ms, stroke 120ms' }}
+                />
+                <text
+                  x={n.x + GEO.NODE_W / 2}
+                  y={n.y + GEO.NODE_H / 2}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize="11"
+                  fontWeight={isCursor ? 600 : 500}
+                  fill={isCursor ? theme.palette.primary.contrastText : theme.palette.text.primary}
+                  style={{ fontVariantNumeric: 'tabular-nums', pointerEvents: 'none', userSelect: 'none' }}
+                >
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </Box>
+
+      <Menu open={Boolean(menu)} anchorEl={menu ? menu.anchorEl : null} onClose={closeMenu}>
         <MenuItem onClick={handlePromote}>Promote variation</MenuItem>
         <MenuItem onClick={handleDeleteRequest}>Delete branch</MenuItem>
       </Menu>

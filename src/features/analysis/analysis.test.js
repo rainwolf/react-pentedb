@@ -30,7 +30,7 @@ import {
   toggleTag as gtToggleTag,
 } from '../../model/gameTree';
 
-import TreeView, { buildTreeRows, chipLabel } from './TreeView';
+import TreeView, { chipLabel } from './TreeView';
 import TagBar, { TAG_GLYPHS } from './TagBar';
 import CommentBox from './CommentBox';
 import MoveStrip from '../viewer/MoveStrip';
@@ -146,21 +146,8 @@ describe('docSlice.deleteBranch', () => {
 });
 
 // --- TreeView ------------------------------------------------------------------
-describe('TreeView.buildTreeRows', () => {
-  test('nests the 2-branch fixture: mainline row + indented variation rows', () => {
-    const rows = buildTreeRows(fixture());
-    expect(rows).toHaveLength(3);
-    expect(rows[0].indent).toBe(0);
-    expect(rows[0].items.map((i) => i.m)).toEqual([100, 101]);
-    expect(rows[1].indent).toBe(1);
-    expect(rows[1].items.map((i) => i.m)).toEqual([200]);
-    expect(rows[1].items[0].path).toEqual([1]);
-    expect(rows[2].indent).toBe(1);
-    expect(rows[2].items.map((i) => i.m)).toEqual([102]);
-    expect(rows[2].items[0].path).toEqual([0, 1]);
-  });
-});
-
+// (The pure layout — exact col/row/edges for the branched fixture — is unit-tested in
+// treeLayout.test.js. These cover the SVG render + the interactions on top of it.)
 describe('TreeView (render)', () => {
   // Fixture moves 100/101/102/200 -> coordinates F14/G14/H14/L9 (cell = x + y*19, row = 19-y,
   // columns A-H,J-T skipping I; see src/export/coords.js). Chips must show the coordinate, not
@@ -177,6 +164,35 @@ describe('TreeView (render)', () => {
     const store = makeStore(gtToggleTag(fixture(), [0, 0], '!'), []);
     renderWith(store, <TreeView />);
     expect(screen.getByText('G14 !')).toBeTruthy();
+  });
+
+  test('draws a node and a connecting edge for every move, with a variation elbow', () => {
+    const { container } = renderWith(makeStore(fixture(), []), <TreeView />);
+    // fixture: 4 moves (100/101/102/200) and 4 parent->child edges.
+    expect(container.querySelectorAll('[data-testid^="tree-node-"]')).toHaveLength(4);
+    const edges = container.querySelectorAll('[data-testid="tree-edge"]');
+    expect(edges).toHaveLength(4);
+    // At least one variation edge (an elbow): 102 branches off 100, 200 off the root.
+    const kinds = Array.from(edges).map((e) => e.getAttribute('data-kind'));
+    expect(kinds).toContain('variation');
+    expect(kinds).toContain('main');
+  });
+
+  test('highlights the current cursor node and only it', () => {
+    const { container } = renderWith(makeStore(fixture(), [0, 0]), <TreeView />); // cursor on 101
+    const cursor = container.querySelector('[data-testid="tree-node-0-0"]');
+    expect(cursor.getAttribute('data-cursor')).toBe('true');
+    // every other node is not the cursor
+    const others = container.querySelectorAll('[data-testid^="tree-node-"][data-cursor="true"]');
+    expect(others).toHaveLength(1);
+  });
+
+  test('Enter on a focused node navigates the cursor there (keyboard access)', () => {
+    const store = makeStore(fixture(), []);
+    const { container } = renderWith(store, <TreeView />);
+    const node = container.querySelector('[data-testid="tree-node-0-0"]'); // 101
+    fireEvent.keyDown(node, { key: 'Enter' });
+    expect(cursorOf(store)).toEqual([0, 0]);
   });
 
   test('right-click promotes a variation via the node menu', () => {
