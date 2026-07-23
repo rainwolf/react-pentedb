@@ -63,7 +63,7 @@ const uiSlice = createSlice({
     threats: defaultThreats(),
     heatOnBoard: true,
     heatHoverCell: null,
-    explorerSort: 'games',
+    explorerSort: 'winrate',
     treeExpanded: true,
   },
   reducers: {
@@ -149,11 +149,11 @@ export function selectHeatHoverCell(state) {
   return ui && ui.heatHoverCell != null ? ui.heatHoverCell : null;
 }
 
-// Defensive: an absent ui slice OR a value predating this flag → 'games' (popularity), the
-// original default ordering, so older stores and single-arg callers stay unaffected.
+// Defensive: an absent ui slice OR a value predating this flag → 'winrate', the current
+// default ordering, so older stores and single-arg callers see the same default as a fresh store.
 export function selectExplorerSort(state) {
   const ui = state && state.ui;
-  return ui && SORT_MODES.includes(ui.explorerSort) ? ui.explorerSort : 'games';
+  return ui && SORT_MODES.includes(ui.explorerSort) ? ui.explorerSort : 'winrate';
 }
 
 // Defensive: absent ui slice OR a store predating this flag → true. The analysis tray is

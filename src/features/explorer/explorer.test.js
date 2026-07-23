@@ -655,19 +655,19 @@ describe('uiSlice — heat toggle + hover cell', () => {
     expect(selectHeatHoverCell({})).toBeNull();
   });
 
-  test("explorerSort defaults to 'games'; setExplorerSort switches it; selector reads it", () => {
+  test("explorerSort defaults to 'winrate'; setExplorerSort switches it; selector reads it", () => {
     const store = configureStore({ reducer: { ui: uiReducer } });
-    expect(selectExplorerSort(store.getState())).toBe('games');
-    store.dispatch(setExplorerSort('winrate'));
-    expect(selectExplorerSort(store.getState())).toBe('winrate');
-    store.dispatch(setExplorerSort('bogus')); // unknown value ignored — stays on the last valid mode
     expect(selectExplorerSort(store.getState())).toBe('winrate');
     store.dispatch(setExplorerSort('games'));
     expect(selectExplorerSort(store.getState())).toBe('games');
+    store.dispatch(setExplorerSort('bogus')); // unknown value ignored — stays on the last valid mode
+    expect(selectExplorerSort(store.getState())).toBe('games');
+    store.dispatch(setExplorerSort('winrate'));
+    expect(selectExplorerSort(store.getState())).toBe('winrate');
   });
 
-  test("selectExplorerSort defaults to 'games' on a store without the ui slice", () => {
-    expect(selectExplorerSort({})).toBe('games');
+  test("selectExplorerSort defaults to 'winrate' on a store without the ui slice", () => {
+    expect(selectExplorerSort({})).toBe('winrate');
   });
 });
 
@@ -763,13 +763,13 @@ describe('ExplorerPanel — sort switch + bidirectional hover roundtrip', () => 
   test('the sort switch reorders the list between popularity and win rate', () => {
     const store = makeScopedStore('archive'); // docs + ui, line [180], stats = NEXT_MOVES
     renderWith(store, <ExplorerPanel />);
-    // default 'games' (popularity): games desc → 220, 200, 240
-    expect(order()).toEqual(['stats-row-220', 'stats-row-200', 'stats-row-240']);
-    fireEvent.click(screen.getByTestId('sort-winrate'));
-    // 'winrate': winPct desc → 240, 200, 220
+    // default 'winrate': winPct desc → 240, 200, 220
     expect(order()).toEqual(['stats-row-240', 'stats-row-200', 'stats-row-220']);
     fireEvent.click(screen.getByTestId('sort-games'));
+    // 'games' (popularity): games desc → 220, 200, 240
     expect(order()).toEqual(['stats-row-220', 'stats-row-200', 'stats-row-240']);
+    fireEvent.click(screen.getByTestId('sort-winrate'));
+    expect(order()).toEqual(['stats-row-240', 'stats-row-200', 'stats-row-220']);
   });
 
   test('hovering a list row lights that same row via the shared cell (row → slice → highlight)', () => {
