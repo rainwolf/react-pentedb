@@ -25,6 +25,9 @@ const withCollectionTag = (result, error, arg) =>
 
 export const api = createApi({
   reducerPath: 'api',
+  // Client-side caching disabled 2026-10-28 by owner while measuring server/replica performance.
+  keepUnusedDataFor: 0,
+  refetchOnMountOrArgChange: true,
   baseQuery: fetchBaseQuery({ baseUrl: '/api/db', credentials: 'include' }),
   tagTypes: ['Analyses', 'Collection'],
   endpoints: (builder) => ({
