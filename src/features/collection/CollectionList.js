@@ -30,18 +30,13 @@ import {
 import { openTab, activateTab } from '../../model/docSlice';
 import { createTree, addMove } from '../../model/gameTree';
 import PanelError from '../../shell/PanelError';
+import WinnerStone from '../search/WinnerStone';
 
 const PAGE_SIZE = 25;
 
 function playerLabel(p) {
   if (!p) return 'Unknown';
   return p.rating != null ? `${p.name} (${p.rating})` : p.name;
-}
-
-function winnerGlyph(header) {
-  if (header.winner === 1) return '●';
-  if (header.winner === 2) return '○';
-  return '—';
 }
 
 function buildTreeFromMoves(moves) {
@@ -150,9 +145,7 @@ export default function CollectionList({ game }) {
               '&:hover': { bgcolor: 'action.hover' },
             }}
           >
-            <Typography component="span" sx={{ width: 16 }} aria-hidden>
-              {winnerGlyph(h)}
-            </Typography>
+            <WinnerStone header={h} />
             <Box sx={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => handleRowClick(h)}>
               <Typography variant="body2" noWrap>
                 {playerLabel(h.player1)} vs {playerLabel(h.player2)}

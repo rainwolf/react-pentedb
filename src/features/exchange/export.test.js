@@ -23,7 +23,7 @@ import { exportGamePgn } from '../../export/pgn';
 const apiMock = vi.hoisted(() => ({
   useGameQuery: vi.fn(() => ({ data: undefined, isLoading: true })),
 }));
-vi.mock('../../app/api', () => ({ useGameQuery: apiMock.useGameQuery }));
+vi.mock('../../app/api', () => ({ useGameQuery: apiMock.useGameQuery, useCollectionGameQuery: () => ({ data: undefined }) }));
 
 // eslint-disable-next-line import/first
 import ExportMenu, { sanitizeFilename, exportFilename } from './ExportMenu';

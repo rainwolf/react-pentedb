@@ -32,7 +32,7 @@ import Button from '@mui/material/Button';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { alpha, useTheme } from '@mui/material/styles';
 
-import { navTo, promoteVariation, deleteBranch } from '../../model/docSlice';
+import { navTo, promoteVariation, deleteBranch, isProtectedOpening } from '../../model/docSlice';
 import ExportMenu from '../exchange/ExportMenu';
 import { formatMove } from '../../export/coords';
 import { gridSizeForGame } from '../../board/boardGeometry';
@@ -163,7 +163,7 @@ export default function TreeView() {
             <IconButton
               size="small"
               aria-label="Delete branch"
-              disabled={cursorPath.length === 0}
+              disabled={cursorPath.length === 0 || isProtectedOpening(activeTab, cursorPath)}
               onClick={() => requestDelete(cursorPath)}
             >
               <DeleteOutlineIcon fontSize="small" />
@@ -261,7 +261,9 @@ export default function TreeView() {
 
       <Menu open={Boolean(menu)} anchorEl={menu ? menu.anchorEl : null} onClose={closeMenu}>
         <MenuItem onClick={handlePromote}>Promote variation</MenuItem>
-        <MenuItem onClick={handleDeleteRequest}>Delete branch</MenuItem>
+        <MenuItem onClick={handleDeleteRequest} disabled={!!menu && isProtectedOpening(activeTab, menu.path)}>
+          Delete branch
+        </MenuItem>
       </Menu>
 
       <Dialog open={Boolean(confirm)} onClose={() => setConfirm(null)}>

@@ -35,5 +35,9 @@ export default function useDebouncedPosition(delay = 150) {
     return () => clearTimeout(t);
   }, [key, delay]);
 
+  // A GAME change is adopted at once: for the debounce window the board is already on the new
+  // game/grid, so serving the old game's position would paint its heat/rows on the wrong board.
+  // (Moves within one game still lag, as before.)
+  if (debounced && pos && debounced.game !== pos.game) return pos;
   return debounced;
 }

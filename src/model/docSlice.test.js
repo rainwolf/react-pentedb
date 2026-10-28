@@ -23,6 +23,8 @@ import { createTree, addMove, mainline } from './gameTree';
 // /g/:gid route loader) to turn a fetched move list into a tree + end-of-game cursor path.
 import { buildTreeFromMoves } from '../shell/gameTab';
 
+// Generic model tests use swap2-pente (27): its first move is free, so the empty-root behaviour
+// under test is unaffected by the forced-centre opener (covered in forcedOpening.test.js).
 const init = () => reducer(undefined, { type: '@@INIT' });
 const active = (s) => s.tabs.find((t) => t.id === s.activeTabId);
 
@@ -45,7 +47,7 @@ function siblingTree() {
 describe('openTab / activateTab / closeTab', () => {
   test('openTab adds a tab and makes it active', () => {
     let s = init();
-    s = reducer(s, openTab({ id: 'g1', kind: 'game', title: 'Game 1', game: 1, gid: 42 }));
+    s = reducer(s, openTab({ id: 'g1', kind: 'game', title: 'Game 1', game: 27, gid: 42 }));
     expect(s.tabs).toHaveLength(1);
     expect(s.activeTabId).toBe('g1');
     expect(active(s).kind).toBe('game');
@@ -55,8 +57,8 @@ describe('openTab / activateTab / closeTab', () => {
 
   test('closeTab drops the tab and falls back to another active tab', () => {
     let s = init();
-    s = reducer(s, openTab({ id: 'a', kind: 'scratch', title: 'A', game: 1 }));
-    s = reducer(s, openTab({ id: 'b', kind: 'scratch', title: 'B', game: 1 }));
+    s = reducer(s, openTab({ id: 'a', kind: 'scratch', title: 'A', game: 27 }));
+    s = reducer(s, openTab({ id: 'b', kind: 'scratch', title: 'B', game: 27 }));
     s = reducer(s, closeTab('b'));
     expect(s.tabs).toHaveLength(1);
     expect(s.activeTabId).toBe('a');
@@ -66,8 +68,8 @@ describe('openTab / activateTab / closeTab', () => {
 
   test('activateTab switches the active tab', () => {
     let s = init();
-    s = reducer(s, openTab({ id: 'a', kind: 'scratch', title: 'A', game: 1 }));
-    s = reducer(s, openTab({ id: 'b', kind: 'scratch', title: 'B', game: 1 }));
+    s = reducer(s, openTab({ id: 'a', kind: 'scratch', title: 'A', game: 27 }));
+    s = reducer(s, openTab({ id: 'b', kind: 'scratch', title: 'B', game: 27 }));
     s = reducer(s, activateTab('a'));
     expect(s.activeTabId).toBe('a');
   });
@@ -76,7 +78,7 @@ describe('openTab / activateTab / closeTab', () => {
 describe('cursor navigation', () => {
   function withLinear() {
     let s = init();
-    s = reducer(s, openTab({ id: 't', kind: 'analysis', title: 'A', game: 1, aid: 7, tree: linearTree() }));
+    s = reducer(s, openTab({ id: 't', kind: 'analysis', title: 'A', game: 27, aid: 7, tree: linearTree() }));
     return s;
   }
 
@@ -102,7 +104,7 @@ describe('cursor navigation', () => {
 
   test('navSiblingDown / navSiblingUp cycle siblings with wraparound', () => {
     let s = init();
-    s = reducer(s, openTab({ id: 't', kind: 'analysis', title: 'A', game: 1, tree: siblingTree(), cursorPath: [0] }));
+    s = reducer(s, openTab({ id: 't', kind: 'analysis', title: 'A', game: 27, tree: siblingTree(), cursorPath: [0] }));
     s = reducer(s, navSiblingDown);
     expect(active(s).cursorPath).toEqual([1]);
     s = reducer(s, navSiblingDown);
@@ -117,17 +119,17 @@ describe('cursor navigation', () => {
 describe('editing', () => {
   test('applyMove on a game tab appends the move, advances the cursor, sets dirty', () => {
     let s = init();
-    s = reducer(s, openTab({ id: 'g', kind: 'game', title: 'G', game: 1, gid: 5 }));
+    s = reducer(s, openTab({ id: 'g', kind: 'game', title: 'G', game: 27, gid: 5 }));
     expect(active(s).dirty).toBe(false);
     s = reducer(s, applyMove(180));
     expect(active(s).dirty).toBe(true);
     expect(active(s).cursorPath).toEqual([0]);
-    expect(selectActivePosition({ docs: s })).toEqual({ game: 1, moves: [180], cursorPath: [0] });
+    expect(selectActivePosition({ docs: s })).toEqual({ game: 27, moves: [180], cursorPath: [0] });
   });
 
   test('markSaved clears the dirty flag', () => {
     let s = init();
-    s = reducer(s, openTab({ id: 'g', kind: 'game', title: 'G', game: 1 }));
+    s = reducer(s, openTab({ id: 'g', kind: 'game', title: 'G', game: 27 }));
     s = reducer(s, applyMove(180));
     s = reducer(s, markSaved());
     expect(active(s).dirty).toBe(false);
@@ -135,7 +137,7 @@ describe('editing', () => {
 
   test('applyTag / applyComment annotate the node at the cursor', () => {
     let s = init();
-    s = reducer(s, openTab({ id: 'g', kind: 'game', title: 'G', game: 1 }));
+    s = reducer(s, openTab({ id: 'g', kind: 'game', title: 'G', game: 27 }));
     s = reducer(s, applyMove(180)); // cursor now at [0]
     s = reducer(s, applyTag('!'));
     s = reducer(s, applyComment('sharp'));
@@ -173,7 +175,7 @@ describe('loaded game opens at the full line and navigates (FB7)', () => {
     let s = init();
     s = reducer(
       s,
-      openTab({ id: 'g:730774', kind: 'game', title: 'orsim vs julierenee', game: 1, gid: 730774, tree, cursorPath: path })
+      openTab({ id: 'g:730774', kind: 'game', title: 'orsim vs julierenee', game: 27, gid: 730774, tree, cursorPath: path })
     );
     return s;
   }

@@ -7,10 +7,16 @@
 // reload — warming the module cache — could paper over. Keep this module a leaf: it may
 // only import other leaves (the pure gameTree model), never the shell or any feature.
 import { createTree, addMove } from '../model/gameTree';
+import { forcedOpening } from '../board/boardGeometry'; // pure leaf, no imports
 
 // No prefs feature yet — the root route's default scratch tab always starts as pente
 // (variant 1) until a preferences slice supplies a real default.
 export const DEFAULT_GAME = 1;
+
+// Game ids the workbench knows (pente family 1..32 incl. speed variants, renju 81/82).
+function isKnownGame(id) {
+  return (id >= 1 && id <= 32) || id === 81 || id === 82;
+}
 
 export function gameTitle(header) {
   if (!header) return 'Game';
@@ -27,7 +33,7 @@ export function gameTitle(header) {
 export function parsePositionParams(gameParam, movesParam) {
   const gameNum = Number(gameParam);
   if (!Number.isInteger(gameNum) || gameNum <= 0) return null;
-  if (!movesParam) return null;
+  if (!movesParam) return isKnownGame(gameNum) ? { game: gameNum, cells: [] } : null; // /p/:game = empty board
   const parts = movesParam.split('-');
   const cells = [];
   for (const part of parts) {
@@ -43,9 +49,18 @@ export function parsePositionParams(gameParam, movesParam) {
 // addressed by their move line via /p/:game/:moves, falling back to '/' at the root
 // (no moves played yet, e.g. a brand new scratch tab).
 export function canonicalUrl(tab, pos) {
+  // Personal (collection) games carry their wgid in `gid` but live in a different id space
+  // than the archive: they get /w/<wgid>, never /g/<wgid>.
+  if (tab.kind === 'game' && tab.gid != null && typeof tab.id === 'string' && tab.id.startsWith('w:')) return `/w/${tab.gid}`;
   if (tab.kind === 'game' && tab.gid != null) return `/g/${tab.gid}`;
   if (tab.kind === 'analysis' && tab.aid != null) return `/a/${tab.aid}`;
-  if (!pos.moves || pos.moves.length === 0) return '/';
+  if (!pos.moves || pos.moves.length === 0) {
+    // Free-first-move variants start empty: carry the variant so a reload doesn't fall back to Pente.
+    return pos.game == null || pos.game === DEFAULT_GAME ? '/' : `/p/${pos.game}`;
+  }
+  // A forced-centre variant's pre-placed opener alone is the fresh-board state, same as '/' (which opens DEFAULT_GAME only; other variants keep /p/<game>/<centre>).
+  const opening = forcedOpening(pos.game);
+  if (pos.game === DEFAULT_GAME && opening.length === pos.moves.length && opening.every((m, i) => m === pos.moves[i])) return '/';
   return `/p/${pos.game}/${pos.moves.join('-')}`;
 }
 

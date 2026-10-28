@@ -43,6 +43,7 @@ import MoveStrip from '../viewer/MoveStrip';
 // pre-existing stores (docsReducer only, no RTK-Query middleware) don't need the real api slice.
 vi.mock('../../app/api', () => ({
   useGameQuery: () => ({ data: undefined, isLoading: true }),
+  useCollectionGameQuery: () => ({ data: undefined }),
 }));
 
 const theme = createTheme();
@@ -327,7 +328,7 @@ describe('TreeView (render)', () => {
 // UI regardless of entry point.
 describe('TreeView toolbar — Delete branch button', () => {
   test('is disabled at the root (cursor has no move)', () => {
-    const store = makeStore(fixture(), []);
+    const store = makeStore(fixture(), [], 27);
     renderWith(store, <TreeView />);
     expect(screen.getByRole('button', { name: 'Delete branch' }).disabled).toBe(true);
   });
@@ -453,5 +454,16 @@ describe('MoveStrip — variation tree default + toggle', () => {
     expect(screen.queryByTestId('tree-view')).toBeNull();
     fireEvent.click(screen.getByLabelText('Show variation tree'));
     expect(screen.getByTestId('tree-view')).toBeTruthy();
+  });
+});
+
+describe('TreeView — protected opening stone', () => {
+  test('Delete branch is disabled on the forced centre stone of pente but enabled for a free variant', () => {
+    const { tree } = addMove(createTree(), [], 180);
+    renderWith(makeStore(tree, [0], 1), <TreeView />);
+    expect(screen.getByRole('button', { name: 'Delete branch' }).disabled).toBe(true);
+    cleanup();
+    renderWith(makeStore(tree, [0], 27), <TreeView />);
+    expect(screen.getByRole('button', { name: 'Delete branch' }).disabled).toBe(false);
   });
 });

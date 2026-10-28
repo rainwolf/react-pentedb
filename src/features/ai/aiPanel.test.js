@@ -129,7 +129,7 @@ describe('AiPanel — Hint / ghost suggestion', () => {
 
   test('the suggestion is bound to its position — navigating away removes the ghost AND the chip', async () => {
     requestMove.mockResolvedValue({ moves: [200] });
-    const store = makeStore([180], [0], 1);
+    const store = makeStore([180, 181], [0, 0], 1);
     const { container } = renderWith(
       store,
       <>
@@ -238,7 +238,7 @@ describe('AiPanel — play vs AI', () => {
 
   test('does not answer when it is the human\'s turn', async () => {
     requestMove.mockResolvedValue({ moves: [200] });
-    const store = makeStore([], [], 1); // empty board: player 1 (human, AI is second) to move
+    const store = makeStore([180, 181], [0, 0], 1); // [centre, reply]: player 1 (human, AI is second) to move
     renderWith(store, <AiPanel />);
     await act(async () => {
       fireEvent.click(screen.getByTestId('ai-play-toggle'));
@@ -248,7 +248,7 @@ describe('AiPanel — play vs AI', () => {
       await Promise.resolve();
     });
     expect(requestMove).not.toHaveBeenCalled();
-    expect(selectActivePosition(store.getState()).moves).toEqual([]);
+    expect(selectActivePosition(store.getState()).moves).toEqual([180, 181]);
   });
 });
 

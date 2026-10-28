@@ -1,8 +1,13 @@
-// Filter form for archive search (Phase 1 /api/db/games/search `filters` DTO).
+// Filter form for the ONE shared filter set (Phase 1 `filters` DTO, sent by BOTH position-stats and
+// games/search). The form edits a local DRAFT and APPLIES it to the ui slice: selects (site, event,
+// seats, winner, variant) apply at once; text fields (players, round, section, dates) apply on
+// Enter / blur / autocomplete pick; "Search" is an explicit apply; "Clear filters" resets both.
+// The draft re-syncs from the store when the applied filters change elsewhere (chip clear-all).
 //
 // Player-name autocomplete debounces locally (300ms, 2-char minimum) before calling
 // usePlayersQuery — the api slice deliberately has no debounce of its own.
 import { useState, useEffect } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
@@ -11,6 +16,7 @@ import Autocomplete from '@mui/material/Autocomplete';
 import Button from '@mui/material/Button';
 
 import { usePlayersQuery } from '../../app/api';
+import { selectFilters, setFilters, clearFilters } from '../../app/uiSlice';
 import useVenueOptions from './useVenueOptions';
 
 export const DEFAULT_DRAFT = {
@@ -80,6 +86,26 @@ export function buildFilters(draft) {
   };
 }
 
+// Inverse of buildFilters: applied DTO (or null) -> form draft for `game`.
+export function draftFromFilters(filters, game) {
+  const f = filters || {};
+  return {
+    ...DEFAULT_DRAFT,
+    game,
+    player1Name: f.player1Name ?? '',
+    player1Seat: f.player1Seat ?? DEFAULT_DRAFT.player1Seat,
+    player2Name: f.player2Name ?? '',
+    player2Seat: f.player2Seat ?? DEFAULT_DRAFT.player2Seat,
+    site: f.site ?? '',
+    event: f.event ?? '',
+    round: f.round ?? '',
+    section: f.section ?? '',
+    afterDate: f.afterDate ?? '',
+    beforeDate: f.beforeDate ?? '',
+    winner: f.winner ?? 0,
+  };
+}
+
 function useDebounced(value, delayMs) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -89,7 +115,7 @@ function useDebounced(value, delayMs) {
   return debounced;
 }
 
-function PlayerField({ label, value, onChange }) {
+function PlayerField({ label, value, onChange, onPick, onCommit }) {
   const debounced = useDebounced(value, 300).trim();
   const skip = debounced.length < 2;
   const { data } = usePlayersQuery(debounced, { skip });
@@ -104,25 +130,58 @@ function PlayerField({ label, value, onChange }) {
       inputValue={value}
       value={value || null}
       onInputChange={(e, val) => onChange(val)}
-      onChange={(e, val) => onChange(val || '')}
-      renderInput={(params) => <TextField {...params} label={label} margin="dense" fullWidth />}
+      onChange={(e, val) => onPick(val || '')}
+      renderInput={(params) => (
+        <TextField {...params} label={label} margin="dense" fullWidth onBlur={onCommit} />
+      )}
     />
   );
 }
 
-export default function FilterForm({ initialGame = 1, onSubmit }) {
-  const [draft, setDraft] = useState({ ...DEFAULT_DRAFT, game: initialGame });
+export default function FilterForm({ initialGame = 1, syncGame, onVariantChange }) {
+  const dispatch = useDispatch();
+  const applied = useSelector(selectFilters);
+  const [draft, setDraft] = useState(() => draftFromFilters(applied, initialGame));
   const update = (patch) => setDraft((d) => ({ ...d, ...patch }));
-  const { variants, sites, events } = useVenueOptions(draft.game, draft.site);
-
-  const submit = () => onSubmit({ game: draft.game, filters: buildFilters(draft) });
-  const clear = () => {
-    const cleared = { ...DEFAULT_DRAFT, game: draft.game };
-    setDraft(cleared);
-    onSubmit({ game: cleared.game, filters: null });
+  // Apply `next` (a full draft) to the store and keep the local draft in step.
+  const applyDraft = (next) => {
+    setDraft(next);
+    dispatch(setFilters(buildFilters(next)));
+  };
+  // Apply the current draft plus a patch (selects, autocomplete picks).
+  const commit = (patch) => applyDraft({ ...draft, ...patch });
+  // Apply the draft as it stands (blur / Enter on text fields).
+  const commitDraft = () => applyDraft(draft);
+  const onEnter = (e) => {
+    if (e.key === 'Enter') commitDraft();
   };
 
-  const variantOptions = variants.length ? variants : [{ game: draft.game, name: `Game ${draft.game}` }];
+  // Follow the active tab's game (tab switch, route load). site/event are per-variant names, so
+  // they reset - and the APPLIED filters follow (a stale site would silently filter the new
+  // variant). No onVariantChange (the workbench is already there - no loop).
+  useEffect(() => {
+    if (syncGame == null || draft.game === syncGame) return;
+    applyDraft({ ...draft, game: syncGame, site: '', event: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncGame]);
+
+  // The applied filters changed from outside this form (chips' clear-all): pull the draft to match.
+  const appliedKey = JSON.stringify(applied ?? null);
+  useEffect(() => {
+    setDraft((d) => (JSON.stringify(buildFilters(d)) === appliedKey ? d : draftFromFilters(applied, d.game)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedKey]);
+
+  const { variants, sites, events } = useVenueOptions(draft.game, draft.site);
+
+  const clear = () => {
+    setDraft(draftFromFilters(null, draft.game));
+    dispatch(clearFilters());
+  };
+
+  const variantOptions = variants.some((v) => v.game === draft.game)
+    ? variants
+    : [...variants, { game: draft.game, name: `Game ${draft.game}` }];
 
   return (
     <Box
@@ -130,7 +189,7 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
       sx={{ px: 1, py: 1 }}
       onSubmit={(e) => {
         e.preventDefault();
-        submit();
+        commitDraft();
       }}
     >
       <Stack spacing={0.5}>
@@ -141,7 +200,11 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
           fullWidth
           label="Variant"
           value={draft.game}
-          onChange={(e) => update({ game: Number(e.target.value), site: '', event: '' })}
+          onChange={(e) => {
+            const game = Number(e.target.value);
+            commit({ game, site: '', event: '' });
+            if (onVariantChange) onVariantChange(game); // workbench follows the variant at once
+          }}
         >
           {variantOptions.map((v) => (
             <MenuItem key={v.game} value={v.game}>
@@ -152,7 +215,13 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
 
         <Stack direction="row" spacing={1}>
           <Box sx={{ flex: 2 }}>
-            <PlayerField label="Player 1" value={draft.player1Name} onChange={(v) => update({ player1Name: v })} />
+            <PlayerField
+              label="Player 1"
+              value={draft.player1Name}
+              onChange={(v) => update({ player1Name: v })}
+              onPick={(v) => commit({ player1Name: v })}
+              onCommit={commitDraft}
+            />
           </Box>
           <TextField
             select
@@ -161,8 +230,9 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
             label="Player 1 seat"
             sx={{ flex: 1 }}
             disabled={!draft.player1Name}
+            helperText={!draft.player1Name ? 'Enter a player name first' : undefined}
             value={draft.player1Seat}
-            onChange={(e) => update({ player1Seat: Number(e.target.value) })}
+            onChange={(e) => commit({ player1Seat: Number(e.target.value) })}
           >
             <MenuItem value={0}>Any seat</MenuItem>
             <MenuItem value={1}>Seat 1</MenuItem>
@@ -172,7 +242,13 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
 
         <Stack direction="row" spacing={1}>
           <Box sx={{ flex: 2 }}>
-            <PlayerField label="Player 2" value={draft.player2Name} onChange={(v) => update({ player2Name: v })} />
+            <PlayerField
+              label="Player 2"
+              value={draft.player2Name}
+              onChange={(v) => update({ player2Name: v })}
+              onPick={(v) => commit({ player2Name: v })}
+              onCommit={commitDraft}
+            />
           </Box>
           <TextField
             select
@@ -181,8 +257,9 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
             label="Player 2 seat"
             sx={{ flex: 1 }}
             disabled={!draft.player2Name}
+            helperText={!draft.player2Name ? 'Enter a player name first' : undefined}
             value={draft.player2Seat}
-            onChange={(e) => update({ player2Seat: Number(e.target.value) })}
+            onChange={(e) => commit({ player2Seat: Number(e.target.value) })}
           >
             <MenuItem value={0}>Any seat</MenuItem>
             <MenuItem value={1}>Seat 1</MenuItem>
@@ -197,7 +274,7 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
           fullWidth
           label="Site"
           value={draft.site}
-          onChange={(e) => update({ site: e.target.value, event: '' })}
+          onChange={(e) => commit({ site: e.target.value, event: '' })}
         >
           <MenuItem value="">Any site</MenuItem>
           {sites.map((s) => (
@@ -215,7 +292,7 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
           label="Event"
           disabled={!draft.site}
           value={draft.event}
-          onChange={(e) => update({ event: e.target.value })}
+          onChange={(e) => commit({ event: e.target.value })}
         >
           <MenuItem value="">Any event</MenuItem>
           {events.map((ev) => (
@@ -233,6 +310,8 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
             label="Round"
             value={draft.round}
             onChange={(e) => update({ round: e.target.value })}
+            onBlur={commitDraft}
+            onKeyDown={onEnter}
           />
           <TextField
             size="small"
@@ -241,6 +320,8 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
             label="Section"
             value={draft.section}
             onChange={(e) => update({ section: e.target.value })}
+            onBlur={commitDraft}
+            onKeyDown={onEnter}
           />
         </Stack>
 
@@ -254,6 +335,8 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
             InputLabelProps={{ shrink: true }}
             value={draft.afterDate}
             onChange={(e) => update({ afterDate: e.target.value })}
+            onBlur={commitDraft}
+            onKeyDown={onEnter}
           />
           <TextField
             type="date"
@@ -264,6 +347,8 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
             InputLabelProps={{ shrink: true }}
             value={draft.beforeDate}
             onChange={(e) => update({ beforeDate: e.target.value })}
+            onBlur={commitDraft}
+            onKeyDown={onEnter}
           />
         </Stack>
 
@@ -274,7 +359,7 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
           fullWidth
           label="Winner"
           value={draft.winner}
-          onChange={(e) => update({ winner: Number(e.target.value) })}
+          onChange={(e) => commit({ winner: Number(e.target.value) })}
         >
           <MenuItem value={0}>Any</MenuItem>
           <MenuItem value={1}>Player 1</MenuItem>
@@ -286,7 +371,7 @@ export default function FilterForm({ initialGame = 1, onSubmit }) {
             Search
           </Button>
           <Button type="button" size="small" onClick={clear}>
-            Clear
+            Clear filters
           </Button>
         </Stack>
       </Stack>

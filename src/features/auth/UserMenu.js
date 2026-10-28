@@ -5,14 +5,11 @@ import MenuItem from '@mui/material/MenuItem';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 
 import { usePingQuery } from '../../app/api';
+import { loginUrl } from './access';
 
 // Where pente.org's (non-SPA, session-cookie-setting) login page sends the browser back
 // to on success: this app's own current URL, full same-origin navigation so the session
 // cookie login.jsp sets is shared with this app.
-function loginUrl() {
-  const ret = typeof window !== 'undefined' ? window.location.href : '';
-  return `/gameServer/login.jsp?return=${encodeURIComponent(ret)}`;
-}
 
 // TopBar's login/account affordance: a "Log in" link while anonymous, or the user's name
 // (opens a menu with Log out) once `/api/db/ping` reports a session. Logout hits the

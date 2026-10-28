@@ -34,7 +34,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { parseSgf, getGameId } from '../../export/sgf';
 import { parsePgn } from '../../export/pgn';
 import { createTree, addMove, mainline, fromWire, toWire } from '../../model/gameTree';
-import { gridSizeForGame, variantKey } from '../../board/boardGeometry';
+import { gridSizeForGame, variantKey, centerCell, firstMoveMustBeCenter } from '../../board/boardGeometry';
 import { useImportGamesMutation, useSaveAnalysisMutation } from '../../app/api';
 
 // ------------------------------------------------------------------------------------------
@@ -50,21 +50,9 @@ export function chunk(arr, size) {
   return out;
 }
 
-// The board-centre cell for a variant (odd grid → single centre). 19x19 → 180 (K10).
-export function centerCell(gameId) {
-  const n = gridSizeForGame(gameId);
-  const c = (n - 1) / 2;
-  return c * n + c;
-}
-
-// Whether a variant forces the opening stone onto the centre. True for the tournament families
-// (pente/gomoku/keryo/…); false for Go (no centre rule) and the swap2 openings (first player
-// may place off-centre). Mirrors the backend's firstMoveCanBeOffCenter partition closely enough
-// for an advisory pre-check.
-export function firstMoveMustBeCenter(gameId) {
-  const k = variantKey(gameId);
-  return !(k === 'go' || k === 'swap2-pente' || k === 'swap2-keryo');
-}
+// centerCell / firstMoveMustBeCenter live in the shared board/boardGeometry leaf (mirror of the
+// backend's firstMoveCanBeOffCenter); re-exported for existing importers.
+export { centerCell, firstMoveMustBeCenter };
 
 // Advisory pre-validation of a linear move line: non-empty, in-range, centre opener when the
 // variant requires it. Returns { ok, reason? }.

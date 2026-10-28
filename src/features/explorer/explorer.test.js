@@ -21,7 +21,7 @@ import { Provider } from 'react-redux';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
-import docsReducer, { openTab, navNext, selectActivePosition } from '../../model/docSlice';
+import docsReducer, { openTab, navNext, selectActivePosition, retargetScratch } from '../../model/docSlice';
 import { createTree, addMove } from '../../model/gameTree';
 import { symCell } from '../viewer/boardSymmetry';
 
@@ -45,7 +45,18 @@ import uiReducer, {
   selectExplorerSort,
 } from '../../app/uiSlice';
 // eslint-disable-next-line import/first
-import heatColor, { heatDomain, heatT, usableCandidates } from './heatScale';
+import heatColor, {
+  heatDomain,
+  heatT,
+  usableCandidates,
+  wilsonLowerBound,
+  LOW_SAMPLE_GAMES,
+  heatValue,
+  isLowSample,
+  candidateDomain,
+  candidateColor,
+  LOW_SAMPLE_COLOR,
+} from './heatScale';
 // eslint-disable-next-line import/first
 import useDebouncedPosition from './useDebouncedPosition';
 // eslint-disable-next-line import/first
@@ -214,7 +225,7 @@ describe('heatT / heatDomain — relative normalization over the displayed set',
   });
 
   test('the rendered heat is identical under light and dark themes (theme-independent)', () => {
-    const cells = [{ move: 180, winPct: 50 }]; // singleton set → domain {50,50} → t=0.5 → yellow
+    const cells = [{ move: 180, games: 100, wins: 50, winPct: 50 }]; // singleton well-sampled set
     const light = createTheme({ palette: { mode: 'light' } });
     const dark = createTheme({ palette: { mode: 'dark' } });
     const { container: cl } = render(
@@ -231,7 +242,8 @@ describe('heatT / heatDomain — relative normalization over the displayed set',
     );
     const darkFill = cd.querySelector('circle').getAttribute('fill');
     expect(lightFill).toBe(darkFill);
-    expect(lightFill).toBe(heatColor(0.5));
+    const v = heatValue(cells[0]);
+    expect(lightFill).toBe(heatColor(heatT(v, { min: v, max: v })));
   });
 });
 
@@ -280,7 +292,7 @@ describe('useDebouncedPosition', () => {
   test('rapid navigation within the window collapses to ONE settled position (150ms)', () => {
     vi.useFakeTimers();
     try {
-      const store = makeStore([180, 200, 220], []); // cursor at root -> empty displayed line
+      const store = makeStore([180, 200, 220], [], 27); // cursor at root -> empty displayed line
       renderWith(store, <DHarness />);
       expect(screen.getByTestId('dm').textContent).toBe('');
 
@@ -307,6 +319,27 @@ describe('useDebouncedPosition', () => {
         vi.advanceTimersByTime(150);
       });
       expect(screen.getByTestId('dm').textContent).toBe('180-200-220');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('useDebouncedPosition game change', () => {
+  function GHarness() {
+    const p = useDebouncedPosition(150);
+    return <span data-testid="dg">{p ? p.game : 'none'}</span>;
+  }
+  test('a GAME change is adopted immediately (never the old game for the debounce window)', () => {
+    vi.useFakeTimers();
+    try {
+      const store = makeStore([], [], 1);
+      renderWith(store, <GHarness />);
+      expect(screen.getByTestId('dg').textContent).toBe('1');
+      act(() => {
+        store.dispatch(retargetScratch({ id: 't', game: 13 }));
+      });
+      expect(screen.getByTestId('dg').textContent).toBe('13');
     } finally {
       vi.useRealTimers();
     }
@@ -342,6 +375,15 @@ describe('StatsRows helpers', () => {
       { move: 20, games: 500, winPct: 100 }, // same winPct → more games wins the tie
     ];
     expect(sortedRows(tie, 'winrate').map((r) => r.move)).toEqual([20, 10]);
+  });
+
+  test("sortedRows 'winrate' mode: a low-sample row (3/3) ranks below a well-sampled row with a lower Wilson bound", () => {
+    // 3/3 → Wilson ~43.8 (above 3800/8529 → ~43.5), but 3 games < LOW_SAMPLE_GAMES, so it sorts last.
+    const rows = [
+      { move: 1, games: 3, wins: 3, winPct: 100 },
+      { move: 2, games: 8529, wins: 3800, winPct: 44.5 },
+    ];
+    expect(sortedRows(rows, 'winrate').map((r) => r.move)).toEqual([2, 1]);
   });
 
   test('totalsRow sums games/wins and computes the aggregate win%', () => {
@@ -411,18 +453,18 @@ describe('StatsRows — interaction', () => {
 // ===================================================================================
 describe('HeatOverlay', () => {
   const CELLS = [
-    { move: 180, winPct: 50 },
-    { move: 200, winPct: 80 },
+    { move: 180, games: 100, wins: 50, winPct: 50 },
+    { move: 200, games: 100, wins: 80, winPct: 80 },
   ];
 
   test('renders one ghost per candidate, colored by RELATIVE heat over the shown set', () => {
     const { container } = renderWith(makeStore(), <HeatOverlay cells={CELLS} gridSize={N} rotation={0} />);
     const circles = container.querySelectorAll('circle');
     expect(circles.length).toBe(2);
-    const dom = heatDomain(CELLS.map((c) => c.winPct)); // {min:50, max:80}
+    const dom = heatDomain(CELLS.map(heatValue)); // Wilson×100 domain: 50/100 → ~40.4, 80/100 → ~71.1
     // worst-of-set (50) reads pure red; best-of-set (80) reads pure green.
     expect(container.querySelector('circle[data-canonical="180"]').getAttribute('fill')).toBe(
-      heatColor(heatT(50, dom))
+      heatColor(heatT(heatValue(CELLS[0]), dom))
     );
     expect(container.querySelector('circle[data-canonical="180"]').getAttribute('fill')).toBe('rgb(255, 0, 0)');
     expect(container.querySelector('circle[data-canonical="200"]').getAttribute('fill')).toBe('rgb(0, 255, 0)');
@@ -793,9 +835,54 @@ describe('ResultsList — position-constrained mode', () => {
   });
 
   test('without a moves prop the search arg still OMITS moves (filter-only mode unchanged)', () => {
-    renderWith(makeStore(), <ResultsList game={1} scope="archive" filters={null} />);
+    renderWith(makeStore(), <ResultsList game={1} scope="archive" filters={null} moves={[]} />);
     const arg = useGamesSearchQuery.mock.calls.at(-1)[0];
     expect(arg).not.toHaveProperty('moves');
     expect(screen.queryByText(/through this position/i)).toBeNull();
+  });
+});
+
+describe('Wilson lower bound, low-sample handling', () => {
+  test('wilsonLowerBound values', () => {
+    expect(wilsonLowerBound(1, 1)).toBeCloseTo(0.207, 3);
+    expect(wilsonLowerBound(3, 3)).toBeCloseTo(0.438, 2);
+    expect(wilsonLowerBound(28, 32)).toBeCloseTo(0.719, 3);
+    expect(wilsonLowerBound(0, 0)).toBe(0);
+  });
+  test('usableCandidates keeps everything (no cap), input order', () => {
+    const cands = Array.from({ length: 30 }, (_, i) => ({ move: i + 1, games: 1, wins: 1, winPct: 100 }));
+    expect(usableCandidates(cands, [1]).map((c) => c.move)).toEqual(cands.slice(1).map((c) => c.move));
+  });
+  test('LOW_SAMPLE_GAMES is 5', () => expect(LOW_SAMPLE_GAMES).toBe(5));
+  const ROWS = [
+    { move: 1, games: 1, wins: 1, winPct: 100 },
+    { move: 2, games: 400, wins: 300, winPct: 75 },
+    { move: 3, games: 32, wins: 28, winPct: 87.5 },
+    { move: 4, games: 3, wins: 3, winPct: 100 },
+  ];
+  test("winrate sort orders by Wilson bound: 1/1 ranks below 300/400; ties by games", () => {
+    expect(sortedRows(ROWS, 'winrate').map((r) => r.move)).toEqual([3, 2, 4, 1]);
+    expect(sortedRows(ROWS, 'games').map((r) => r.move)).toEqual([2, 3, 4, 1]);
+    const tie = [{ move: 10, games: 10, wins: 5, winPct: 50 }, { move: 20, games: 10, wins: 5, winPct: 50 }];
+    expect(sortedRows(tie, 'winrate').map((r) => r.move)).toEqual([10, 20]);
+  });
+  test('StatsRows greys <5-game rows with a hint, keeps raw win%', () => {
+    renderWith(makeStore(), <StatsRows rows={sortedRows(ROWS, 'winrate')} gridSize={N} />);
+    const low = screen.getByTestId('stats-row-1');
+    expect(low.getAttribute('data-low-sample')).toBe('true');
+    expect(low.getAttribute('title')).toMatch(/fewer than 5 games/);
+    expect(low.textContent).toContain('100%');
+    expect(screen.getByTestId('stats-row-2').getAttribute('data-low-sample')).toBe('false');
+    expect(screen.getByTestId('stats-totals').textContent).toContain('436'); // 1+400+32+3
+  });
+  test('heat domain excludes <5-game candidates; they draw neutral grey', () => {
+    const dom = candidateDomain(ROWS);
+    expect(dom.min).toBeCloseTo(heatValue(ROWS[2]) < heatValue(ROWS[1]) ? heatValue(ROWS[2]) : heatValue(ROWS[1]), 6);
+    expect(dom.max).toBeCloseTo(Math.max(heatValue(ROWS[1]), heatValue(ROWS[2])), 6);
+    expect(candidateColor(ROWS[0], dom)).toBe(LOW_SAMPLE_COLOR);
+    const { container } = renderWith(makeStore(), <HeatOverlay cells={ROWS} gridSize={N} rotation={0} />);
+    expect(container.querySelector('circle[data-canonical="1"]').getAttribute('fill')).toBe(LOW_SAMPLE_COLOR);
+    expect(container.querySelector('circle[data-canonical="2"]').getAttribute('fill')).toBe('rgb(255, 0, 0)');
+    expect(container.querySelector('circle[data-canonical="3"]').getAttribute('fill')).toBe('rgb(0, 255, 0)');
   });
 });

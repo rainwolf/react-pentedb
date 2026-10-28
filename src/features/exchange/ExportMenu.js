@@ -21,7 +21,7 @@ import MenuItem from '@mui/material/MenuItem';
 import { mainline } from '../../model/gameTree';
 import { exportAnalysisSgf, exportGameSgf } from '../../export/sgf';
 import { exportGamePgn } from '../../export/pgn';
-import { useGameQuery } from '../../app/api';
+import { useGameQuery, useCollectionGameQuery } from '../../app/api';
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -60,7 +60,12 @@ export default function ExportMenu({ label = 'Export', size } = {}) {
   const activeTab = useSelector((s) => s.docs.tabs.find((t) => t.id === s.docs.activeTabId) || null);
   const isGame = Boolean(activeTab && activeTab.kind === 'game');
   const gid = isGame ? activeTab.gid : undefined;
-  const gameQuery = useGameQuery(gid, { skip: gid == null });
+  // Personal (`w:<wgid>`) tabs live in the collection id space: fetch via the collection
+  // endpoint, never the archive /games/<wgid> (which would be a different/absent game).
+  const isPersonal = isGame && typeof activeTab.id === 'string' && activeTab.id.startsWith('w:');
+  const archiveQuery = useGameQuery(gid, { skip: gid == null || isPersonal });
+  const personalQuery = useCollectionGameQuery(gid, { skip: gid == null || !isPersonal });
+  const gameQuery = isPersonal ? personalQuery : archiveQuery;
   const [anchorEl, setAnchorEl] = useState(null);
 
   if (!activeTab) return null;

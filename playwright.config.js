@@ -9,8 +9,8 @@
 // Auth: the `setup` project logs the test account in through the same /gameServer/login.jsp
 // session-cookie flow the app itself uses and saves the storageState; the `authed` project
 // (analysis + import/export specs, which write to the caller's webdb_* rows) reuses it. The
-// anonymous/mobile projects need no login (archive stats, search, and the client-side wasm
-// AI all work signed-out). Credentials come from E2E_USER / E2E_PASS in the environment —
+// anon/mobile projects ALSO reuse that session: the app is subscriber-only, so the test
+// account must have database access (subscriber or new player with >=1 game). Credentials come from E2E_USER / E2E_PASS in the environment —
 // see e2e/run-local.sh (git-ignored) for the local invocation that sources them.
 const { defineConfig, devices } = require('@playwright/test');
 
@@ -45,7 +45,10 @@ module.exports = defineConfig({
     {
       name: 'anon',
       testMatch: /(explorer|viewer|ai)\.spec\.js/,
-      use: desktop,
+      // The app is subscriber-only (ping dbAccess gate): even these specs need the test
+      // account's session. (Name kept; they no longer run signed-out.)
+      dependencies: ['setup'],
+      use: { ...desktop, storageState: 'e2e/.auth/user.json' },
     },
     {
       name: 'authed',
@@ -56,9 +59,10 @@ module.exports = defineConfig({
     {
       name: 'mobile',
       testMatch: /mobile\.spec\.js/,
+      dependencies: ['setup'],
       // Pixel 5 descriptor supplies isMobile + hasTouch (=> coarse pointer, which the board's
       // tap-confirm path keys off); pin the viewport to the spec's 390x844.
-      use: { ...devices['Pixel 5'], viewport: { width: 390, height: 844 } },
+      use: { ...devices['Pixel 5'], viewport: { width: 390, height: 844 }, storageState: 'e2e/.auth/user.json' },
     },
   ],
   webServer: {

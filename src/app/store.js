@@ -9,6 +9,8 @@ import { toWire } from '../model/gameTree';
 import uiReducer from './uiSlice';
 import aiReducer from '../features/ai/aiSlice';
 import { api } from './api';
+import { subscriptionGuard } from './subscriptionGuard';
+import { venueGuard } from './venueGuard';
 
 // The ui slice + its actions/selector live in ./uiSlice so they can be imported without
 // pulling in the real api slice (see uiSlice.js). Re-export for existing import sites.
@@ -22,7 +24,7 @@ export const store = configureStore({
     ai: aiReducer,
     [api.reducerPath]: api.reducer,
   },
-  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(api.middleware),
+  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(api.middleware, subscriptionGuard, venueGuard),
 });
 
 setupListeners(store.dispatch);

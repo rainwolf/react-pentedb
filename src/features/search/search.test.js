@@ -19,8 +19,8 @@ import { Provider } from 'react-redux';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
-import docsReducer from '../../model/docSlice';
-import uiReducer from '../../app/uiSlice';
+import docsReducer, { openTab, activateTab } from '../../model/docSlice';
+import uiReducer, { setFilters, selectFilters } from '../../app/uiSlice';
 
 vi.mock('../../app/api', () => ({
   useVenuesQuery: vi.fn(),
@@ -41,11 +41,11 @@ import { useVenuesQuery, usePlayersQuery, useGamesSearchQuery, useGameQuery, use
 // eslint-disable-next-line import/first
 import SearchPanel from './SearchPanel';
 // eslint-disable-next-line import/first
-import FilterForm, { buildFilters, DEFAULT_DRAFT } from './FilterForm';
+import FilterForm, { buildFilters, DEFAULT_DRAFT, draftFromFilters } from './FilterForm';
 // eslint-disable-next-line import/first
-import ResultsList, { paginationLabel, visibleRowRange, PAGE_SIZE } from './ResultsList';
+import ResultsList, { gamesCountLabel } from './ResultsList';
 // eslint-disable-next-line import/first
-import useVenueOptions from './useVenueOptions';
+import useVenueOptions, { dedupeVariants } from './useVenueOptions';
 
 const theme = createTheme();
 
@@ -185,7 +185,7 @@ describe('buildFilters — exact wire filter object', () => {
 // ===================================================================================
 describe('player autocomplete debounce', () => {
   test('usePlayersQuery is skipped under 2 chars, and only fires 300ms after the LAST keystroke', () => {
-    renderPlain(<FilterForm initialGame={1} onSubmit={() => {}} />);
+    renderWith(makeStore(), <FilterForm initialGame={1} />);
     const input = screen.getByLabelText('Player 1');
 
     fireEvent.change(input, { target: { value: 'a' } });
@@ -233,69 +233,153 @@ describe('useVenueOptions', () => {
     render(<Harness game={1} site="" />);
     expect(screen.getByTestId('events').textContent).toBe('');
   });
+
+  test('duplicate variant names from leaked turn-based ids are dropped (lowest game id kept)', () => {
+    useVenuesQuery.mockReturnValue({
+      data: {
+        variants: [
+          { game: 1, name: 'Pente', sites: [] },
+          { game: 2, name: 'Keryo-Pente', sites: [] },
+          { game: 3, name: 'Swap2-Pente', sites: [] },
+          { game: 77, name: 'Swap2-Pente', sites: [] },
+          { game: 79, name: 'Swap2-Keryo', sites: [] },
+          { game: 4, name: 'Swap2-Keryo', sites: [] },
+        ],
+      },
+      isLoading: false,
+    });
+    render(<Harness game={1} site="" />);
+    expect(screen.getByTestId('variants').textContent).toBe('Pente,Keryo-Pente,Swap2-Pente,Swap2-Keryo');
+  });
+});
+
+describe('dedupeVariants', () => {
+  test('keeps the lowest game id per name, regardless of input order', () => {
+    const out = dedupeVariants([
+      { game: 77, name: 'Swap2-Pente' },
+      { game: 3, name: 'Swap2-Pente' },
+      { game: 1, name: 'Pente' },
+    ]);
+    expect(out).toEqual([
+      { game: 3, name: 'Swap2-Pente' },
+      { game: 1, name: 'Pente' },
+    ]);
+  });
+
+  test('a list with no duplicates is returned unchanged', () => {
+    const list = [
+      { game: 1, name: 'Pente' },
+      { game: 2, name: 'Keryo-Pente' },
+    ];
+    expect(dedupeVariants(list)).toEqual(list);
+  });
+
+  test('empty input -> empty output', () => {
+    expect(dedupeVariants([])).toEqual([]);
+  });
 });
 
 // ===================================================================================
 // ResultsList — pagination math + hand-rolled windowing (virtualization)
 // ===================================================================================
-describe('paginationLabel', () => {
-  test('computes "Showing x-y of total"', () => {
-    expect(paginationLabel(0, 100, 25)).toBe('Showing 1–25 of 100');
-    expect(paginationLabel(25, 100, 25)).toBe('Showing 26–50 of 100');
-    expect(paginationLabel(90, 100, 10)).toBe('Showing 91–100 of 100');
-  });
-
-  test('zero results shows "Showing 0 of 0"', () => {
-    expect(paginationLabel(0, 0, 0)).toBe('Showing 0 of 0');
+describe('gamesCountLabel', () => {
+  test('"x of N games"', () => {
+    expect(gamesCountLabel(25, 100)).toBe('25 of 100 games');
+    expect(gamesCountLabel(0, 0)).toBe('0 of 0 games');
   });
 });
 
-describe('visibleRowRange — windowing math', () => {
-  test('at scrollTop 0, renders from row 0 through the viewport (+ overscan)', () => {
-    expect(visibleRowRange(0, 200, 50, 100, 2)).toEqual({ start: 0, end: 8 });
-  });
+const rows = (from, n) => Array.from({ length: n }, (_, i) => ({ ...HEADER, gid: from + i }));
 
-  test('scrolled down, the window shifts and keeps overscan on both edges', () => {
-    expect(visibleRowRange(500, 200, 50, 100, 2)).toEqual({ start: 8, end: 16 });
-  });
-
-  test('clips the end to the actual row count', () => {
-    expect(visibleRowRange(0, 200, 50, 3, 2)).toEqual({ start: 0, end: 3 });
-  });
-
-  test('zero rows -> empty range', () => {
-    expect(visibleRowRange(999, 200, 50, 0, 2)).toEqual({ start: 0, end: 0 });
-  });
-});
-
-describe('ResultsList — pagination controls', () => {
-  test('Previous is disabled on page 1; Next steps the offset and re-queries', () => {
-    useGamesSearchQuery.mockReturnValue({
-      data: { total: 60, games: Array.from({ length: 25 }, (_, i) => ({ ...HEADER, gid: i + 1 })) },
+describe('ResultsList — Show more + page size', () => {
+  test('first page shows "x of N games"; Show more adds a second page query at offset = pageSize', () => {
+    useGamesSearchQuery.mockImplementation((arg) => ({
+      data: { total: 60, games: rows(arg.offset + 1, Math.min(25, 60 - arg.offset)) }, // realistic last page
       isFetching: false,
-    });
-    const store = makeStore();
-    renderWith(store, <ResultsList game={1} scope="archive" filters={null} />);
+    }));
+    renderWith(makeStore(), <ResultsList game={1} scope="archive" filters={null} moves={[180]} />);
 
-    expect(screen.getByText('Showing 1–25 of 60')).toBeTruthy();
-    expect(screen.getByLabelText('Previous page').disabled).toBe(true);
+    expect(screen.getByTestId('games-count').textContent).toBe('25 of 60 games');
+    expect(screen.getAllByTestId(/^result-row-/)).toHaveLength(25);
 
-    // fireEvent wraps in act() and flushes synchronously — no timers involved on this
-    // path, so no need for waitFor (which polls on real timers and would deadlock
-    // against this file's vi.useFakeTimers()).
-    fireEvent.click(screen.getByLabelText('Next page'));
-    expect(useGamesSearchQuery.mock.calls.at(-1)[0].offset).toBe(PAGE_SIZE);
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(useGamesSearchQuery.mock.calls.some(([a]) => a.offset === 25 && a.limit === 25)).toBe(true);
+    expect(screen.getByTestId('games-count').textContent).toBe('50 of 60 games');
+    expect(screen.getAllByTestId(/^result-row-/)).toHaveLength(50);
 
-    fireEvent.click(screen.getByLabelText('Previous page'));
-    expect(useGamesSearchQuery.mock.calls.at(-1)[0].offset).toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    expect(screen.getByTestId('games-count').textContent).toBe('60 of 60 games');
+    expect(screen.getByRole('button', { name: 'Show more' }).disabled).toBe(true);
   });
 
-  test('omits `moves` from the search args (Task 7 is filter-only search)', () => {
+  test('page size select (10/25/50/100) re-queries with that limit and resets to the first page', () => {
+    useGamesSearchQuery.mockImplementation((arg) => ({
+      data: { total: 60, games: rows(1, Math.min(arg.limit, 60)) },
+      isFetching: false,
+    }));
     const store = makeStore();
-    renderWith(store, <ResultsList game={1} scope="archive" filters={null} />);
+    renderWith(store, <ResultsList game={1} scope="archive" filters={null} moves={[180]} />);
+    expect(useGamesSearchQuery.mock.calls.at(-1)[0].limit).toBe(25); // default
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Games page size/i }));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['10', '25', '50', '100']);
+    fireEvent.click(screen.getByRole('option', { name: '10' }));
+
+    expect(store.getState().ui.gamesPageSize).toBe(10);
+    expect(useGamesSearchQuery.mock.calls.at(-1)[0]).toMatchObject({ offset: 0, limit: 10 });
+    expect(screen.getAllByTestId(/^result-row-/)).toHaveLength(10);
+    expect(screen.getByTestId('games-count').textContent).toBe('10 of 60 games');
+  });
+
+  test('the shared filters + scope are sent with the position; an empty line omits `moves`', () => {
+    const F = buildFilters({ ...DEFAULT_DRAFT, player1Name: 'alice' });
+    const { rerender } = renderWith(
+      makeStore(),
+      <ResultsList game={1} scope="archive" filters={F} moves={[180, 181]} />
+    );
+    expect(useGamesSearchQuery.mock.calls.at(-1)[0]).toEqual({
+      game: 1, moves: [180, 181], scope: 'archive', filters: F, offset: 0, limit: 25,
+    });
+    // free-first-move empty board: all filter-matching games (desktop parity) => no `moves` key
+    rerender(
+      <Provider store={makeStore()}>
+        <ThemeProvider theme={theme}>
+          <ResultsList game={1} scope="archive" filters={F} moves={[]} />
+        </ThemeProvider>
+      </Provider>
+    );
     const arg = useGamesSearchQuery.mock.calls.at(-1)[0];
     expect(arg).not.toHaveProperty('moves');
-    expect(arg).toEqual({ game: 1, scope: 'archive', filters: null, offset: 0, limit: PAGE_SIZE });
+    expect(arg).toEqual({ game: 1, scope: 'archive', filters: F, offset: 0, limit: 25 });
+    expect(screen.getByTestId('position-mode-header').textContent).toBe('All matching games');
+  });
+
+  test('stale rows for OLD filters never render as current while the new filters fetch', () => {
+    const OLD = { total: 1, games: [{ ...HEADER, gid: 1, player1: { name: 'oldfilter' } }] };
+    useGamesSearchQuery.mockReturnValue({ data: OLD, currentData: OLD, isFetching: false });
+    const F1 = buildFilters({ ...DEFAULT_DRAFT, player1Name: 'a' });
+    const F2 = buildFilters({ ...DEFAULT_DRAFT, player1Name: 'b' });
+    const ui = (f, moves) => (
+      <Provider store={store}>
+        <ThemeProvider theme={theme}>
+          <ResultsList game={1} scope="archive" filters={f} moves={moves} />
+        </ThemeProvider>
+      </Provider>
+    );
+    const store = makeStore();
+    const { rerender } = render(ui(F1, [180]));
+    expect(screen.getByText(/oldfilter/)).toBeTruthy();
+    // RTK retains `data` while the new arg is in flight; currentData is undefined
+    useGamesSearchQuery.mockReturnValue({ data: OLD, currentData: undefined, isFetching: true });
+    rerender(ui(F2, [180]));
+    expect(screen.queryByText(/oldfilter/)).toBeNull();
+    // ...but a mere move change under the SAME filters keeps the list (no flicker)
+    useGamesSearchQuery.mockReturnValue({ data: OLD, currentData: OLD, isFetching: false });
+    rerender(ui(F2, [180]));
+    useGamesSearchQuery.mockReturnValue({ data: OLD, currentData: undefined, isFetching: true });
+    rerender(ui(F2, [180, 181]));
+    expect(screen.getByText(/oldfilter/)).toBeTruthy();
   });
 });
 
@@ -307,7 +391,7 @@ describe('ResultsList — error state (P2 pickup)', () => {
       error: { status: 500, data: { error: { message: 'search boom' } } },
     });
     const store = makeStore();
-    renderWith(store, <ResultsList game={1} scope="archive" filters={null} />);
+    renderWith(store, <ResultsList game={1} scope="archive" filters={null} moves={[]} />);
     expect(screen.getByText('search boom')).toBeTruthy();
     expect(screen.queryByText(/No games found/i)).toBeNull();
   });
@@ -320,7 +404,7 @@ describe('ResultsList — null player rendering', () => {
       isFetching: false,
     });
     const store = makeStore();
-    renderWith(store, <ResultsList game={1} scope="archive" filters={null} />);
+    renderWith(store, <ResultsList game={1} scope="archive" filters={null} moves={[]} />);
     expect(screen.getByText(/Unknown/)).toBeTruthy();
   });
 });
@@ -338,7 +422,7 @@ describe('row click opens a game tab at the final position', () => {
     );
 
     const store = makeStore();
-    renderWith(store, <ResultsList game={1} scope="archive" filters={null} />);
+    renderWith(store, <ResultsList game={1} scope="archive" filters={null} moves={[]} />);
     // fireEvent wraps in act() and flushes state + effects synchronously; the click ->
     // useGameQuery(data already resolved by the mock) -> dispatch(openTab) chain has no
     // real async boundary, so no waitFor is needed (and waitFor's real-timer polling
@@ -362,7 +446,7 @@ describe('row click opens a game tab at the final position', () => {
     useGameQuery.mockReturnValue({ data: { header: HEADER, moves: [180] }, isSuccess: true });
 
     const store = makeStore();
-    renderWith(store, <ResultsList game={1} scope="archive" filters={null} />);
+    renderWith(store, <ResultsList game={1} scope="archive" filters={null} moves={[]} />);
     fireEvent.click(screen.getByText(/alice/));
     expect(store.getState().docs.tabs).toHaveLength(1);
 
@@ -408,7 +492,7 @@ describe('row click opens a game tab at the final position', () => {
     const ui = () => (
       <Provider store={store}>
         <ThemeProvider theme={theme}>
-          <ResultsList game={1} scope="archive" filters={null} />
+          <ResultsList game={1} scope="archive" filters={null} moves={[]} />
         </ThemeProvider>
       </Provider>
     );
@@ -451,7 +535,7 @@ describe('row click opens a game tab at the final position', () => {
     );
 
     const store = makeStore();
-    renderWith(store, <ResultsList game={1} scope="archive" filters={null} />);
+    renderWith(store, <ResultsList game={1} scope="archive" filters={null} moves={[]} />);
     fireEvent.click(screen.getByText(/alice/));
 
     expect(store.getState().docs.tabs).toHaveLength(0); // no junk tab on a failed open
@@ -463,16 +547,15 @@ describe('row click opens a game tab at the final position', () => {
 // SearchPanel — composition / auth-gated scope + import / scope wiring
 // ===================================================================================
 describe('SearchPanel', () => {
-  test('anonymous: no scope toggle, no import button, results default to archive', () => {
+  test('anonymous: no scope toggle, no import button, and NO games list (the explorer owns it)', () => {
     const store = makeStore();
     renderWith(store, <SearchPanel />);
     expect(screen.getByRole('heading', { name: 'Search' })).toBeTruthy();
     // ScopeToggle renders nothing while anonymous, and there is no Import affordance.
     expect(screen.queryByLabelText('Mine')).toBeNull();
     expect(screen.queryByRole('button', { name: /Import/i })).toBeNull();
-    expect(useGamesSearchQuery).toHaveBeenCalledWith(
-      expect.objectContaining({ game: 1, scope: 'archive', filters: null })
-    );
+    expect(screen.getByLabelText('Player 1')).toBeTruthy(); // the filter form is there
+    expect(useGamesSearchQuery).not.toHaveBeenCalled(); // the left filter-only list is gone
   });
 
   test('logged-in: shows the Archive/Mine/Both toggle and an Import button', () => {
@@ -485,22 +568,161 @@ describe('SearchPanel', () => {
     expect(screen.getByRole('button', { name: /Import/i })).toBeTruthy();
   });
 
-  test('the ui-slice scope feeds the results query (scope=mine)', () => {
-    usePingQuery.mockReturnValue({ data: { auth: 'iostest' } });
+  test('logged OUT: the scope toggle is hidden', () => {
+    usePingQuery.mockReturnValue({ data: { auth: null } });
     const store = makeStore('mine');
     renderWith(store, <SearchPanel />);
-    expect(useGamesSearchQuery).toHaveBeenCalledWith(
-      expect.objectContaining({ game: 1, scope: 'mine', filters: null })
-    );
+    expect(screen.queryByLabelText('Mine')).toBeNull();
+  });
+});
+
+// ===================================================================================
+// FilterForm -> shared applied filters (ui slice)
+// ===================================================================================
+describe('FilterForm applies to the shared store', () => {
+  const applied = (store) => selectFilters(store.getState());
+
+  test('selects apply immediately: winner, then site + event', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Winner/i }));
+    fireEvent.click(screen.getByRole('option', { name: 'Player 2' }));
+    expect(applied(store)).toMatchObject({ winner: 2, player1Name: null, site: null });
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /^Site/i }));
+    fireEvent.click(screen.getByRole('option', { name: 'Pente.org' }));
+    expect(applied(store)).toMatchObject({ winner: 2, site: 'Pente.org', event: null });
   });
 
-  test('logged OUT with a lingering mine scope coerces results back to archive and hides the toggle', () => {
-    usePingQuery.mockReturnValue({ data: { auth: null } });
-    const store = makeStore('mine'); // ui slice still says 'mine' from before logout
+  test('text fields do NOT apply while typing; they apply on blur and on Enter', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    const p1 = screen.getByLabelText('Player 1');
+    fireEvent.change(p1, { target: { value: 'alice' } });
+    expect(applied(store)).toBeNull();
+    fireEvent.blur(p1);
+    expect(applied(store)).toMatchObject({ player1Name: 'alice' });
+
+    const round = screen.getByLabelText('Round');
+    fireEvent.change(round, { target: { value: '3' } });
+    expect(applied(store).round).toBeNull();
+    fireEvent.keyDown(round, { key: 'Enter' });
+    expect(applied(store)).toMatchObject({ player1Name: 'alice', round: '3' });
+
+    const after = screen.getByLabelText('After date');
+    fireEvent.change(after, { target: { value: '2020-01-01' } });
+    fireEvent.blur(after);
+    expect(applied(store).afterDate).toBe('2020-01-01');
+  });
+
+  test('autocomplete pick applies at once', () => {
+    usePlayersQuery.mockReturnValue({ data: { players: ['alice', 'alicia'] }, isFetching: false });
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    const p1 = screen.getByLabelText('Player 1');
+    fireEvent.change(p1, { target: { value: 'ali' } });
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    fireEvent.click(screen.getByRole('option', { name: 'alicia' }));
+    expect(applied(store)).toMatchObject({ player1Name: 'alicia' });
+  });
+
+  test('the Search button is an explicit apply', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    fireEvent.change(screen.getByLabelText('Section'), { target: { value: 'B' } });
+    expect(applied(store)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(applied(store)).toMatchObject({ section: 'B' });
+  });
+
+  test('"Clear filters" empties the form and the store', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    const p1 = screen.getByLabelText('Player 1');
+    fireEvent.change(p1, { target: { value: 'alice' } });
+    fireEvent.blur(p1);
+    expect(applied(store)).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(applied(store)).toBeNull();
+    expect(screen.getByLabelText('Player 1').value).toBe('');
+  });
+
+  test('the draft follows the store: external clear-all empties the fields; mount shows applied values', () => {
+    const store = makeStore();
+    store.dispatch(setFilters(buildFilters({ ...DEFAULT_DRAFT, player1Name: 'carol', round: '2' })));
+    renderWith(store, <FilterForm initialGame={1} />);
+    expect(screen.getByLabelText('Player 1').value).toBe('carol'); // survives a tab-switch remount
+    expect(screen.getByLabelText('Round').value).toBe('2');
+    act(() => {
+      store.dispatch(setFilters(null));
+    });
+    expect(screen.getByLabelText('Player 1').value).toBe('');
+    expect(screen.getByLabelText('Round').value).toBe('');
+  });
+
+  test('a variant switch resets the applied site/event (names are per-variant) but keeps other filters', () => {
+    const TWO = {
+      variants: [
+        { game: 1, name: 'Pente', sites: [{ id: 2, name: 'Pente.org', events: [] }] },
+        { game: 5, name: 'Gomoku', sites: [] },
+      ],
+    };
+    useVenuesQuery.mockReturnValue({ data: TWO, isLoading: false });
+    const store = makeStore();
+    store.dispatch(openTab({ kind: 'scratch', title: 'T', game: 1 }));
+    store.dispatch(setFilters(buildFilters({ ...DEFAULT_DRAFT, player1Name: 'dan', site: 'Pente.org' })));
     renderWith(store, <SearchPanel />);
-    expect(screen.queryByLabelText('Mine')).toBeNull(); // no scope toggle while anonymous
-    expect(useGamesSearchQuery).toHaveBeenCalledWith(
-      expect.objectContaining({ game: 1, scope: 'archive', filters: null })
-    );
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Variant/i }));
+    fireEvent.click(screen.getByRole('option', { name: 'Gomoku' }));
+    expect(applied(store)).toMatchObject({ player1Name: 'dan', site: null, event: null });
+  });
+
+  test('draftFromFilters inverts buildFilters', () => {
+    const d = { ...DEFAULT_DRAFT, game: 3, player1Name: 'x', player2Seat: 0, winner: 1, afterDate: '2020-01-01' };
+    expect(draftFromFilters(buildFilters(d), 3)).toEqual(d);
+    expect(draftFromFilters(null, 3)).toEqual({ ...DEFAULT_DRAFT, game: 3 });
+  });
+});
+
+// ===================================================================================
+// Variant select -> workbench follows (switchToVariant), search itself still waits for submit
+// ===================================================================================
+describe('Variant select drives the workbench', () => {
+  const TWO = { variants: [{ game: 1, name: 'Pente', sites: [] }, { game: 5, name: 'Gomoku', sites: [] }] };
+  test('changing Variant retargets the untouched active scratch tab; results query unchanged until submit', () => {
+    useVenuesQuery.mockReturnValue({ data: TWO, isLoading: false });
+    const store = makeStore();
+    store.dispatch(openTab({ kind: 'scratch', title: 'New position', game: 1 }));
+    renderWith(store, <SearchPanel />);
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: /Variant/i }));
+    fireEvent.click(screen.getByRole('option', { name: 'Gomoku' }));
+    const t = store.getState().docs.tabs.find((x) => x.id === store.getState().docs.activeTabId);
+    expect(t.game).toBe(5);
+    expect(useGamesSearchQuery).not.toHaveBeenCalledWith(expect.objectContaining({ game: 5 }));
+  });
+});
+
+describe('Variant select follows the active tab', () => {
+  const TWO = { variants: [{ game: 1, name: 'Pente', sites: [] }, { game: 5, name: 'Gomoku', sites: [] }] };
+  test('switching to a tab of another game updates the select, without re-switching or submitting', () => {
+    useVenuesQuery.mockReturnValue({ data: TWO, isLoading: false });
+    const store = makeStore();
+    store.dispatch(openTab({ id: 'a', kind: 'scratch', title: 'A', game: 1 }));
+    store.dispatch(openTab({ id: 'b', kind: 'scratch', title: 'B', game: 5 }));
+    store.dispatch(activateTab('a'));
+    renderWith(store, <SearchPanel />);
+    const sel = () => screen.getByRole('combobox', { name: /Variant/i }).textContent;
+    expect(sel()).toBe('Pente');
+    const before = store.getState().docs.tabs.length;
+    useGamesSearchQuery.mockClear();
+    act(() => {
+      store.dispatch(activateTab('b'));
+    });
+    expect(sel()).toBe('Gomoku');
+    expect(store.getState().docs.tabs).toHaveLength(before);
+    expect(store.getState().docs.activeTabId).toBe('b');
+    expect(useGamesSearchQuery).not.toHaveBeenCalledWith(expect.objectContaining({ game: 5 }));
   });
 });

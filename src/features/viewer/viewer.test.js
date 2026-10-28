@@ -53,6 +53,7 @@ import { buildBoardGame, capturesByColor } from './boardGameFactory';
 // api slice.
 vi.mock('../../app/api', () => ({
   useGameQuery: () => ({ data: undefined, isLoading: true }),
+  useCollectionGameQuery: () => ({ data: undefined }),
 }));
 
 const theme = createTheme();
@@ -168,7 +169,7 @@ describe('useKeyboardNav', () => {
 
   test('keyboard sequence on a 5-move line lands where expected', () => {
     const line = [180, 200, 220, 240, 260];
-    const store = makeStore(line, [0, 0, 0, 0, 0]);
+    const store = makeStore(line, [0, 0, 0, 0, 0], 27);
     renderWith(store, <KbHarness />);
 
     fireEvent.keyDown(window, { key: 'Home' });
@@ -232,7 +233,7 @@ describe('BoardPane — interaction', () => {
   });
 
   test('mouse wheel over the board steps next then prev', () => {
-    const store = makeStore([180, 200, 220], []);
+    const store = makeStore([180, 200, 220], [], 27);
     renderWith(store, <BoardPane />);
     const pane = screen.getByTestId('board-pane');
 
@@ -291,7 +292,7 @@ describe('BoardPane — interaction', () => {
 
 describe('NavControls', () => {
   test('renders the four transport buttons and dispatches nav', () => {
-    const store = makeStore([180, 200, 220], [0, 0, 0]);
+    const store = makeStore([180, 200, 220], [0, 0, 0], 27);
     renderWith(store, <NavControls />);
     fireEvent.click(screen.getByLabelText('First move'));
     expect(selectActivePosition(store.getState()).moves).toEqual([]);

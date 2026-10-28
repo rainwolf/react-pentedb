@@ -7,6 +7,10 @@
 //      the board (via the shared ui hover cell), clicking plays the move;
 //   4. "games through here" — a ResultsList constrained to games passing through this line.
 //
+// FILTERS. The ONE applied filter set (ui slice, edited by the left FilterForm) rides along with
+// the position on BOTH the stats query and the games list (desktop parity), and is summarised as
+// chips above the stats with a clear-all.
+//
 // CANONICAL vs DISPLAY. Everything that leaves this panel toward the model is canonical: the
 // position-stats query uses the canonical line (selectActivePosition().moves, via the debounce
 // hook), a row click dispatches applyMove(canonicalCell), and onHover writes the canonical cell
@@ -16,7 +20,7 @@
 // is informational only and must NOT be re-applied to nextMoves; that would double-rotate and
 // corrupt the cell. The separate VIEW-rotation transform (for a locally-rotated board display)
 // lives entirely in HeatOverlay (used by BoardHeatOverlay over the real board).
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -27,13 +31,18 @@ import CircularProgress from '@mui/material/CircularProgress';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 
-import { usePositionStatsQuery, usePingQuery } from '../../app/api';
+import { usePingQuery } from '../../app/api';
+import usePositionStats from './usePositionStats';
 import {
   selectScope,
   selectEffectiveScope,
   selectHeatOnBoard,
   selectHeatHoverCell,
   selectExplorerSort,
+  selectExplorerLimit,
+  selectFilters,
+  clearFilters,
+  setExplorerLimit,
   setHeatOnBoard,
   setHeatHoverCell,
   setExplorerSort,
@@ -43,8 +52,55 @@ import { gridSizeForGame } from '../../board/boardGeometry';
 import PanelError from '../../shell/PanelError';
 import ResultsList from '../search/ResultsList';
 import useDebouncedPosition from './useDebouncedPosition';
-import StatsRows, { sortedRows } from './StatsRows';
+import StatsRows from './StatsRows';
+import ActiveFilters from './ActiveFilters';
+import TextField from '@mui/material/TextField';
+import { displayedCandidates } from './displayedCandidates';
 import { usableCandidates } from './heatScale';
+
+// "Show" counter. Keeps a local string draft so the field can be cleared / retyped; commits to the
+// store after a short debounce (arrows apply promptly, multi-digit typing isn't committed half-way),
+// and immediately on Enter / blur. Invalid drafts revert to the stored value on blur / Enter.
+const LIMIT_DEBOUNCE_MS = 400;
+function parseLimit(str) {
+  return /^\d+$/.test(str.trim()) && Number(str) >= 1 ? Number(str) : null;
+}
+function LimitField({ limit, onCommit }) {
+  const [draft, setDraft] = useState(String(limit));
+  const timer = useRef(null);
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  useEffect(() => { setDraft(String(limit)); }, [limit]); // external store change
+  useEffect(() => clear, []);
+  const commitNow = (str) => {
+    clear();
+    const n = parseLimit(str);
+    if (n == null) setDraft(String(limit));
+    else if (n !== limit) onCommit(n);
+  };
+  return (
+    <TextField
+      size="small"
+      type="number"
+      label="Show"
+      value={draft}
+      onChange={(e) => {
+        const v = e.target.value;
+        setDraft(v);
+        clear();
+        const n = parseLimit(v);
+        if (n != null) timer.current = setTimeout(() => { timer.current = null; onCommit(n); }, LIMIT_DEBOUNCE_MS);
+      }}
+      onBlur={(e) => commitNow(e.target.value)}
+      onKeyDown={(e) => { if (e.key === 'Enter') commitNow(e.target.value); }}
+      inputProps={{ min: 1, step: 1, 'aria-label': 'Moves to display', 'data-testid': 'explorer-limit' }}
+      InputLabelProps={{ shrink: true }}
+      sx={{ ml: 'auto', width: 76, '& input': { py: 0.4, fontSize: '0.75rem' }, '& label': { fontSize: '0.8rem' } }}
+    />
+  );
+}
 
 export default function ExplorerPanel() {
   const dispatch = useDispatch();
@@ -55,17 +111,20 @@ export default function ExplorerPanel() {
   // never leaves the stats + "games through here" list firing 401-ing authed queries.
   const scope = selectEffectiveScope(ping?.auth ?? null, useSelector(selectScope));
 
+  const filters = useSelector(selectFilters);
+
   const hasPos = !!pos;
   const game = pos ? pos.game : 1;
   const moves = pos ? pos.moves : [];
   const gridSize = gridSizeForGame(game);
 
-  const { data, isFetching, error } = usePositionStatsQuery(
-    { game, moves, scope, filters: null },
+  const { data, isFetching, error } = usePositionStats(
+    { game, moves, scope, filters },
     { skip: !hasPos }
   );
 
   const sortMode = useSelector(selectExplorerSort);
+  const limit = useSelector(selectExplorerLimit);
   const hoverCell = useSelector(selectHeatHoverCell);
 
   const nextMoves = (data && data.nextMoves) || [];
@@ -73,7 +132,8 @@ export default function ExplorerPanel() {
   // BEFORE the heat domain and the list — the SAME filter BoardHeatOverlay applies, so the list
   // and the board heat stay on one filtered set and their green→red ramps agree. `sortMode` only
   // reorders the list (popularity vs win rate); the board heat colouring is unaffected.
-  const rows = sortedRows(usableCandidates(nextMoves, moves), sortMode);
+  const rows = displayedCandidates(nextMoves, moves, sortMode, limit);
+  const availableCount = usableCandidates(nextMoves, moves).length;
   const totalGames = data ? data.totalGames : null;
   const totalWinPct = data ? data.totalWinPct : null;
 
@@ -155,25 +215,39 @@ export default function ExplorerPanel() {
             Win rate
           </ToggleButton>
         </ToggleButtonGroup>
+        <LimitField limit={limit} onCommit={(n) => dispatch(setExplorerLimit(n))} />
       </Box>
+
+      <ActiveFilters filters={filters} scope={scope} onClear={() => dispatch(clearFilters())} />
 
       <PanelError error={error} />
 
       {!error && (
         <Typography data-testid="explorer-summary" variant="caption" color="text.secondary" sx={{ px: 1 }}>
-          {totalGames != null
+          {moves.length === 0
+            ? 'Play a first move to see move statistics.'
+            : totalGames != null
             ? `${totalGames} games · ${totalWinPct != null ? `${totalWinPct}% win for mover` : 'win% n/a'}`
-            : 'No master games from this position.'}
+            : isFetching
+              ? 'Loading…'
+              : filters
+                ? 'No games match these filters from this position.'
+                : 'No master games from this position.'}
         </Typography>
       )}
 
+      {availableCount > rows.length && (
+        <Typography data-testid="explorer-limit-hint" variant="caption" color="text.disabled" sx={{ px: 1 }}>
+          {`${rows.length} of ${availableCount} moves`}
+        </Typography>
+      )}
       <StatsRows rows={rows} gridSize={gridSize} onSelect={handleSelect} onHover={handleHover} hoverCell={hoverCell} />
 
       <Divider sx={{ mt: 1 }} />
       <Box sx={{ px: 1, pt: 1 }}>
         <Typography variant="subtitle2">Games through here</Typography>
       </Box>
-      <ResultsList game={game} scope={scope} filters={null} moves={moves} />
+      <ResultsList game={game} scope={scope} filters={filters} moves={moves} />
     </Box>
   );
 }

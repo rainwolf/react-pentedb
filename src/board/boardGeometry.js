@@ -78,3 +78,25 @@ export function boardSpecialPoints(gameId) {
   }
   return GO_DOTS[gridSizeForGame(gameId)].map((index) => ({ index, part: 52 }));
 }
+
+// ---- Forced centre opener -------------------------------------------------------------
+// Mirrors backend GridStateFactory.firstMoveCanBeOffCenter (pente.org repo). Variants where it
+// is TRUE (d-pente, dk-pente, Go family, swap2 family; speed and turn-based (50+) twins
+// included) let player 1 open anywhere; every other variant forces the centre stone.
+const FREE_FIRST_MOVE_BASE_IDS = new Set([7, 8, 17, 18, 19, 20, 21, 22, 23, 24, 27, 28, 29, 30]);
+export function firstMoveMustBeCenter(gameId) {
+  const base = gameId >= 50 ? gameId - 50 : gameId; // turn-based twins are 50 + base id
+  return !FREE_FIRST_MOVE_BASE_IDS.has(base);
+}
+
+// Board-centre cell for the variant's grid (odd grid -> single centre). 19x19 -> 180.
+export function centerCell(gameId) {
+  const n = gridSizeForGame(gameId);
+  const c = (n - 1) / 2;
+  return c * n + c;
+}
+
+// The pre-placed opening line: [centre] for forced-centre variants, [] otherwise.
+export function forcedOpening(gameId) {
+  return firstMoveMustBeCenter(gameId) ? [centerCell(gameId)] : [];
+}

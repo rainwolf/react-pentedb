@@ -65,6 +65,50 @@ export function usableCandidates(nextMoves = [], moves = []) {
   return nextMoves.filter((c) => c && !played.has(c.move));
 }
 
+// Wilson score interval LOWER bound (95% by default, z = 1.96) for wins out of games. A
+// confidence-adjusted win rate: 1/1 ≈ 0.207, 28/32 ≈ 0.719, so a lone 100% fluke ranks below a
+// well-sampled strong move. Returns a fraction in [0,1]; 0 when games = 0.
+export function wilsonLowerBound(wins, games, z = 1.96) {
+  const n = Number(games);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const p = Math.max(0, Math.min(1, Number(wins) / n));
+  const z2 = z * z;
+  const centre = p + z2 / (2 * n);
+  const margin = z * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n));
+  return Math.max(0, (centre - margin) / (1 + z2 / n));
+}
+
+// Candidates with fewer games than this are statistically noise: still listed, but greyed in the
+// list, drawn neutral on the board, and excluded from the heat domain.
+export const LOW_SAMPLE_GAMES = 5;
+
+export function isLowSample(c) {
+  return !(Number(c && c.games) >= LOW_SAMPLE_GAMES);
+}
+
+// Wins for a candidate: the backend's `wins`, else derived from winPct × games.
+function winsOf(c) {
+  if (Number.isFinite(Number(c.wins)) && c.wins != null) return Number(c.wins);
+  return (Number(c.winPct) / 100) * Number(c.games);
+}
+
+// Heat/sort value on the 0..100 scale: Wilson lower bound ×100. Used instead of the raw win%.
+export function heatValue(c) {
+  return wilsonLowerBound(winsOf(c), c.games) * 100;
+}
+
+// Heat domain over a candidate set: low-sample candidates are excluded so a fluke can't pin
+// either end of the scale.
+export function candidateDomain(cands = []) {
+  return heatDomain(cands.filter((c) => !isLowSample(c)).map(heatValue));
+}
+
+// Colour for one candidate: Wilson-based green→red, or neutral grey for low-sample candidates.
+export const LOW_SAMPLE_COLOR = 'rgb(128, 128, 128)';
+export function candidateColor(c, domain) {
+  return isLowSample(c) ? LOW_SAMPLE_COLOR : heatColor(heatT(heatValue(c), domain));
+}
+
 // Normalize a single value to t in [0,1] over the displayed domain. Missing/non-numeric value
 // → null (rendered as no-data). When the domain is degenerate (max == min, e.g. a single shown
 // move) the ramp falls back to an absolute 0..100 scale so a lone 50% still reads as yellow.

@@ -16,7 +16,8 @@
 import { useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
-import { usePositionStatsQuery, usePingQuery } from '../../app/api';
+import { usePingQuery } from '../../app/api';
+import usePositionStats from './usePositionStats';
 import { applyMove } from '../../model/docSlice';
 import {
   selectScope,
@@ -24,12 +25,15 @@ import {
   selectRotation,
   selectHeatOnBoard,
   selectHeatHoverCell,
+  selectExplorerSort,
+  selectExplorerLimit,
+  selectFilters,
   setHeatHoverCell,
 } from '../../app/uiSlice';
 import { gridSizeForGame } from '../../board/boardGeometry';
 import useDebouncedPosition from './useDebouncedPosition';
 import HeatOverlay from './HeatOverlay';
-import { usableCandidates } from './heatScale';
+import { displayedCandidates } from './displayedCandidates';
 
 // Inner: runs the position-stats query. Only mounted when the api slice exists (see below).
 function BoardHeatData() {
@@ -59,13 +63,16 @@ function BoardHeatData() {
   const { data: ping } = usePingQuery();
   const scope = selectEffectiveScope(ping?.auth ?? null, useSelector(selectScope));
 
+  const filters = useSelector(selectFilters); // the shared applied set: board heat == list numbers
+  const sortMode = useSelector(selectExplorerSort);
+  const limit = useSelector(selectExplorerLimit);
   const hasPos = !!pos;
   const game = pos ? pos.game : 1;
   const moves = pos ? pos.moves : [];
   const gridSize = gridSizeForGame(game);
 
-  const { data } = usePositionStatsQuery(
-    { game, moves, scope, filters: null },
+  const { data } = usePositionStats(
+    { game, moves, scope, filters },
     { skip: !on || !hasPos } // toggle OFF or no position → no request fires
   );
 
@@ -77,7 +84,8 @@ function BoardHeatData() {
   const nextMoves = (data && data.nextMoves) || [];
   // Same exclusion as the list (ExplorerPanel): drop candidates already on the board so an echoed
   // played cell neither anchors the domain nor paints a disc over its own stone — one filtered set.
-  const cells = usableCandidates(nextMoves, moves);
+  // Same helper as the list (sort, then first N) so board discs == listed rows.
+  const cells = displayedCandidates(nextMoves, moves, sortMode, limit);
   if (!on || !hasPos || cells.length === 0) return null;
 
   return (

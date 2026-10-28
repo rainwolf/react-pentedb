@@ -34,7 +34,7 @@
 // size as a real stone.
 
 import { symCell } from '../viewer/boardSymmetry';
-import { heatColor, heatDomain, heatT } from './heatScale';
+import { candidateColor, candidateDomain, isLowSample } from './heatScale';
 
 // Stroke width of the hover highlight ring. Its radius is derived as 5 - this/2 so the stroke's
 // OUTER edge sits exactly at r=5 (the disc edge) — see the render comment below.
@@ -53,7 +53,7 @@ export default function HeatOverlay({
   const n = gridSize;
   const span = 10 * (n + 1);
   // Normalize the win% across the shown set so the worst move reads red, the best green.
-  const domain = heatDomain(cells.map((c) => c.winPct));
+  const domain = candidateDomain(cells);
   return (
     <svg
       data-testid="heat-overlay"
@@ -64,12 +64,14 @@ export default function HeatOverlay({
       style={{ position: 'absolute', inset: 0 }}
     >
       <g transform="translate(14.5,14.5) scale(0.95)">
-        {cells.map(({ move, winPct }) => {
+        {cells.map((cell) => {
+          const { move } = cell;
+          const low = isLowSample(cell);
           const disp = symCell(move, rotation, n);
           const x = disp % n;
           const y = Math.floor(disp / n);
           const isHover = hoverCell != null && move === hoverCell;
-          const fill = heatColor(heatT(winPct, domain));
+          const fill = candidateColor(cell, domain);
           return (
             <g key={move}>
               <circle
@@ -84,7 +86,7 @@ export default function HeatOverlay({
                 // so a hovered candidate stays exactly stone-sized, matching the played stones.
                 r={5}
                 fill={fill}
-                fillOpacity={isHover ? 1 : 0.66}
+                fillOpacity={isHover ? 1 : low ? 0.3 : 0.66}
                 stroke={isHover ? '#ffffff' : 'rgba(15,12,10,0.5)'}
                 strokeWidth={isHover ? 1.4 : 0.3}
                 // Discs opt back INTO pointer events (the overlay container stays pass-through, so

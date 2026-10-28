@@ -51,6 +51,33 @@ const EMPTY_THREATS = Object.freeze(defaultThreats());
 // This ONLY reorders the list; the board heat colouring (by win%) is unaffected.
 const SORT_MODES = ['games', 'winrate'];
 
+// Explorer "moves to display" counter: first N rows of the current sort order (list + board heat).
+const DEFAULT_EXPLORER_LIMIT = 20;
+const validLimit = (v) => Number.isInteger(v) && v >= 1;
+
+// Games-list page size (desktop parity: 10/25/50/100). Persisted pref: read once from
+// localStorage at module load (guarded - storage may be absent/blocked), written by the
+// ExplorerPanel's select via persistGamesPageSize.
+export const GAMES_PAGE_SIZES = [10, 25, 50, 100];
+export const DEFAULT_GAMES_PAGE_SIZE = 25;
+const PAGE_SIZE_KEY = 'pentedb.gamesPageSize';
+const validPageSize = (v) => GAMES_PAGE_SIZES.includes(v);
+function loadGamesPageSize() {
+  try {
+    const n = Number(window.localStorage.getItem(PAGE_SIZE_KEY));
+    return validPageSize(n) ? n : DEFAULT_GAMES_PAGE_SIZE;
+  } catch {
+    return DEFAULT_GAMES_PAGE_SIZE;
+  }
+}
+export function persistGamesPageSize(n) {
+  try {
+    window.localStorage.setItem(PAGE_SIZE_KEY, String(n));
+  } catch {
+    /* storage unavailable - the in-memory value still applies */
+  }
+}
+
 const uiSlice = createSlice({
   name: 'ui',
   // `heatOnBoard` (explorer feedback rework): the green→red candidate heat is overlaid on the
@@ -59,16 +86,52 @@ const uiSlice = createSlice({
   // stats row lights that exact cell up brightly on the board.
   initialState: {
     scope: 'archive',
+    // The ONE applied filter set (the Filters DTO FilterForm.buildFilters produces; null = none).
+    // Shared by position-stats and the games-through-position list (desktop parity: one
+    // filter per tab feeding both). FilterForm edits a local draft and applies it here.
+    filters: null,
+    // Variant the applied `filters` belong to (null = not yet observed). site/event/round/section
+    // are per-variant names; venueGuard calls syncFiltersGame on every active-game change.
+    filtersGame: null,
+    gamesPageSize: loadGamesPageSize(),
     rotation: 0,
     threats: defaultThreats(),
     heatOnBoard: true,
     heatHoverCell: null,
     explorerSort: 'winrate',
+    explorerLimit: DEFAULT_EXPLORER_LIMIT,
     treeExpanded: true,
   },
   reducers: {
     setScope(state, action) {
       if (SCOPES.includes(action.payload)) state.scope = action.payload;
+    },
+    // Apply a filter set. Deep-equal no-op so a redundant blur/apply never churns subscribers.
+    setFilters(state, action) {
+      const f = action.payload == null ? null : action.payload;
+      if (JSON.stringify(f) !== JSON.stringify(state.filters ?? null)) state.filters = f;
+    },
+    clearFilters(state) {
+      state.filters = null;
+    },
+    // Active tab's game changed (or first seen): drop the per-variant venue fields so chips and
+    // requests never carry another variant's site/event. Collapses to null when nothing is left.
+    syncFiltersGame(state, action) {
+      const game = action.payload;
+      if (state.filtersGame === game) return;
+      const prev = state.filtersGame;
+      state.filtersGame = game;
+      const f = state.filters;
+      if (prev == null || !f) return;
+      const next = { ...f, site: null, event: null, round: null, section: null };
+      const isDefault =
+        !next.player1Name && !next.player2Name && !next.afterDate && !next.beforeDate &&
+        (next.player1Seat ?? 1) === 1 && (next.player2Seat ?? 2) === 2 && (next.winner ?? 0) === 0;
+      state.filters = isDefault ? null : next;
+    },
+    setGamesPageSize(state, action) {
+      const n = Number(action.payload);
+      if (validPageSize(n)) state.gamesPageSize = n;
     },
     // Show / hide the analysis tray (tag bar + variation tree + comment box) beneath the move
     // strip. Defaults to true (see initialState comment) — this only handles explicit toggles.
@@ -89,6 +152,13 @@ const uiSlice = createSlice({
     setExplorerSort(state, action) {
       if (SORT_MODES.includes(action.payload)) state.explorerSort = action.payload;
     },
+    // Explorer "moves to display" counter. Non-integer / < 1 / empty / NaN payloads ignored, so a
+    // half-typed number input can never store NaN or 0 and blank the list.
+    setExplorerLimit(state, action) {
+      const raw = action.payload;
+      const n = typeof raw === 'string' && raw.trim() === '' ? NaN : Number(raw);
+      if (raw != null && validLimit(n)) state.explorerLimit = n;
+    },
     // Set the board view orientation. Normalized into 0..7 so callers can pass a raw
     // "current + 1" without worrying about wraparound or a stray non-integer.
     setRotation(state, action) {
@@ -108,11 +178,16 @@ const uiSlice = createSlice({
 
 export const {
   setScope,
+  setFilters,
+  clearFilters,
+  syncFiltersGame,
+  setGamesPageSize,
   setRotation,
   setThreatToggle,
   setHeatOnBoard,
   setHeatHoverCell,
   setExplorerSort,
+  setExplorerLimit,
   setTreeExpanded,
 } = uiSlice.actions;
 
@@ -120,6 +195,17 @@ export const {
 // back to 'archive' rather than crash when `state.ui` is absent.
 export function selectScope(state) {
   return (state.ui && state.ui.scope) || 'archive';
+}
+
+// Defensive: absent ui slice -> no filters. Returns the stored object (stable reference until
+// the next real change), so it is safe as a useSelector result.
+export function selectFilters(state) {
+  return (state.ui && state.ui.filters) || null;
+}
+
+export function selectGamesPageSize(state) {
+  const ui = state && state.ui;
+  return ui && validPageSize(ui.gamesPageSize) ? ui.gamesPageSize : DEFAULT_GAMES_PAGE_SIZE;
 }
 
 // Defensive: absent ui slice → identity orientation. Board overlays render on any store
@@ -154,6 +240,12 @@ export function selectHeatHoverCell(state) {
 export function selectExplorerSort(state) {
   const ui = state && state.ui;
   return ui && SORT_MODES.includes(ui.explorerSort) ? ui.explorerSort : 'winrate';
+}
+
+// Defensive: absent ui slice OR missing/corrupt value → 20 (same shape as selectExplorerSort).
+export function selectExplorerLimit(state) {
+  const ui = state && state.ui;
+  return ui && validLimit(ui.explorerLimit) ? ui.explorerLimit : DEFAULT_EXPLORER_LIMIT;
 }
 
 // Defensive: absent ui slice OR a store predating this flag → true. The analysis tray is

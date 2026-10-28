@@ -14,7 +14,15 @@
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
-import { heatColor, heatDomain, heatT } from './heatScale';
+import {
+  heatColor,
+  heatT,
+  heatValue,
+  isLowSample,
+  candidateColor,
+  candidateDomain,
+  LOW_SAMPLE_GAMES,
+} from './heatScale';
 import { formatMove } from '../../export/coords';
 
 // Flat cell (cell = y*n + x) → board coordinate, e.g. centre of 19x19 → "K10". Delegates to
@@ -26,13 +34,15 @@ export function moveLabel(cell, n = 19) {
 
 // Candidate rows in the chosen order. Copy first (never mutate props).
 //   'games'   → popularity: games desc, win% as the tiebreak (the original default).
-//   'winrate' → win% desc PRIMARILY (a 1-game 100% does sit above a 500-game 65%), games as
-//               the tiebreak so equal win% falls back to the more-played line.
-// This ONLY reorders the list; the board heat colouring (by win%) is unchanged.
+//   'winrate' → well-sampled rows (games >= LOW_SAMPLE_GAMES) first, then low-sample rows; within
+//               each group Wilson lower bound desc (confidence-adjusted win rate, so a 1-game 100%
+//               ranks below a 300/400 move), games as the tiebreak. Displayed win% stays the raw winPct.
+// This ONLY reorders the list; the board heat uses the same Wilson value.
 export function sortedRows(nextMoves = [], mode = 'games') {
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const byGames = (a, b) => num(b.games) - num(a.games) || num(b.winPct) - num(a.winPct);
-  const byWinrate = (a, b) => num(b.winPct) - num(a.winPct) || num(b.games) - num(a.games);
+  const byWinrate = (a, b) =>
+    Number(isLowSample(a)) - Number(isLowSample(b)) || heatValue(b) - heatValue(a) || num(b.games) - num(a.games);
   return [...nextMoves].sort(mode === 'winrate' ? byWinrate : byGames);
 }
 
@@ -47,11 +57,11 @@ export function totalsRow(nextMoves = []) {
 
 // The bar WIDTH shows the absolute win rate; the bar COLOR is the green→red RELATIVE heat,
 // normalized across the shown rows (via `domain`) so the list agrees with the board overlay.
-function WinBar({ winPct, domain }) {
+function WinBar({ winPct, domain, color }) {
   const pct = Math.max(0, Math.min(100, Number(winPct) || 0));
   return (
     <Box sx={{ position: 'relative', height: 8, borderRadius: 1, bgcolor: 'action.hover', overflow: 'hidden' }}>
-      <Box sx={{ position: 'absolute', inset: 0, width: `${pct}%`, bgcolor: heatColor(heatT(winPct, domain)) }} />
+      <Box sx={{ position: 'absolute', inset: 0, width: `${pct}%`, bgcolor: color ?? heatColor(heatT(winPct, domain)) }} />
     </Box>
   );
 }
@@ -65,7 +75,7 @@ export default function StatsRows({
 }) {
   const totals = totalsRow(rows);
   // Same normalization as HeatOverlay / BoardHeatOverlay: min→red, max→green over this set.
-  const domain = heatDomain(rows.map((r) => r.winPct));
+  const domain = candidateDomain(rows);
 
   return (
     <Box role="table" aria-label="Candidate moves" sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -90,6 +100,9 @@ export default function StatsRows({
           role="button"
           tabIndex={0}
           data-testid={`stats-row-${r.move}`}
+          data-low-sample={isLowSample(r) ? 'true' : 'false'}
+          title={isLowSample(r) ? `fewer than ${LOW_SAMPLE_GAMES} games` : undefined}
+          aria-label={isLowSample(r) ? `${moveLabel(r.move, gridSize)}, fewer than ${LOW_SAMPLE_GAMES} games` : undefined}
           data-active-hover={hoverCell != null && r.move === hoverCell ? 'true' : 'false'}
           onClick={() => onSelect(r.move)}
           onMouseEnter={() => onHover(r.move)}
@@ -105,6 +118,7 @@ export default function StatsRows({
             borderColor: 'divider',
             // Board-driven highlight (pointer on the disc, not the row): same look as :hover, so
             // board-driven and mouse-driven highlights are indistinguishable.
+            ...(isLowSample(r) && { color: 'text.disabled', opacity: 0.6 }),
             ...(hoverCell != null && r.move === hoverCell && { bgcolor: 'action.hover' }),
             '&:hover': { bgcolor: 'action.hover' },
           }}
@@ -116,7 +130,7 @@ export default function StatsRows({
             {r.games ?? 0}
           </Typography>
           <Box sx={{ flex: 1 }}>
-            <WinBar winPct={r.winPct} domain={domain} />
+            <WinBar winPct={r.winPct} domain={domain} color={candidateColor(r, domain)} />
           </Box>
           <Typography variant="body2" sx={{ width: 44, textAlign: 'right' }}>
             {r.winPct != null ? `${r.winPct}%` : '—'}
@@ -150,7 +164,7 @@ export default function StatsRows({
           {totals.games}
         </Typography>
         <Box sx={{ flex: 1 }}>
-          <WinBar winPct={totals.winPct} domain={domain} />
+          <WinBar winPct={totals.winPct} domain={domain} color={heatColor(heatT(heatValue(totals), domain))} />
         </Box>
         <Typography variant="body2" sx={{ width: 44, textAlign: 'right', fontWeight: 600 }}>
           {totals.winPct}%

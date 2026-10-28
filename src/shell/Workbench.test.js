@@ -27,9 +27,10 @@ vi.mock('../board/Board', () => ({
 vi.mock('../app/api', () => ({
   // TopBar renders UserMenu (P3 Task 1), which calls usePingQuery — stub it anonymous so
   // that path doesn't crash on an unmocked import; auth state isn't under test here.
-  usePingQuery: vi.fn(() => ({ data: { ok: true, auth: null }, refetch: vi.fn() })),
+  usePingQuery: vi.fn(() => ({ data: { ok: true, auth: null, dbAccess: true }, isLoading: false, isError: false, refetch: vi.fn() })),
   useGameQuery: vi.fn(() => ({ data: undefined, isLoading: true, isSuccess: false })),
   useAnalysisQuery: vi.fn(() => ({ data: undefined, isLoading: true, isSuccess: false })),
+  useCollectionGameQuery: vi.fn(() => ({ data: undefined })),
   // The wide-breakpoint layout renders the real (Task 7) SearchPanel in the left pane —
   // stub its hooks too so that path doesn't crash on an unmocked import.
   useGamesSearchQuery: vi.fn(() => ({ data: { total: 0, games: [] }, isFetching: false })),
@@ -135,7 +136,9 @@ describe('routing -> docSlice', () => {
     const tab = store.getState().docs.tabs[0];
     expect(tab.kind).toBe('scratch');
     expect(tab.game).toBe(1);
-    expect(tab.cursorPath).toEqual([]);
+    // Pente's first move is forced: the fresh board already carries the centre stone.
+    expect(tab.cursorPath).toEqual([0]);
+    expect(mainline(tab.tree)).toEqual([180]);
   });
 
   test('/g/123 calls useGameQuery(123) and opens a game tab once loaded', async () => {
@@ -241,7 +244,8 @@ describe('URL sync', () => {
 
     fireEvent.click(screen.getByLabelText('Previous move'));
 
-    await waitFor(() => expect(window.location.pathname).toBe('/p/1/180'));
+    // Back at the forced opener alone == a fresh board, addressed as '/'.
+    await waitFor(() => expect(window.location.pathname).toBe('/'));
     expect(window.history.length).toBe(baseLength);
     expect(pushSpy).not.toHaveBeenCalled();
 
@@ -322,5 +326,31 @@ describe('responsive layout', () => {
     expect(screen.getByText('Games')).toBeTruthy();
     expect(screen.queryByText('Threats')).toBeNull();
     expect(screen.queryByLabelText('Open search panel')).toBeNull();
+  });
+});
+
+describe('/p/:game (empty board of a variant)', () => {
+  test('/p/19 opens an empty Go scratch tab', async () => {
+    const store = makeStore();
+    renderWithMemoryRouter('/p/19', store);
+    await waitFor(() => expect(store.getState().docs.tabs).toHaveLength(1));
+    const tab = store.getState().docs.tabs[0];
+    expect(tab.game).toBe(19);
+    expect(tab.tree.root.kids).toHaveLength(0);
+  });
+
+  test('/p/999 (unknown game) redirects to / and opens the default game', async () => {
+    const store = makeStore();
+    renderWithMemoryRouter('/p/999', store);
+    await waitFor(() => expect(store.getState().docs.tabs).toHaveLength(1));
+    expect(store.getState().docs.tabs[0].game).toBe(1);
+  });
+
+  test('/p/19 reuses an untouched Go scratch tab instead of opening a duplicate', async () => {
+    const store = makeStore();
+    store.dispatch(openTab({ kind: 'scratch', title: 'New position', game: 19 }));
+    renderWithMemoryRouter('/p/19', store);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(store.getState().docs.tabs).toHaveLength(1);
   });
 });

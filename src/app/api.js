@@ -29,8 +29,11 @@ export const api = createApi({
   tagTypes: ['Analyses', 'Collection'],
   endpoints: (builder) => ({
     // --- auth (Phase 3 Task 1) -----------------------------------------------------
-    // GET /api/db/ping → {ok, auth:"name"|null} — session probe. `auth` is the BINDING
-    // signal every later Phase-3 task derives login state from (see authSlice.js).
+    // GET /api/db/ping → {ok, auth:"name"|null, dbAccess:boolean} — session probe. `auth` is
+    // the BINDING login signal; `dbAccess` is the subscriber-only gate (subscriber, or a new
+    // player <60 days old with >=1 game; see AccessGate). A missing dbAccess means NO access.
+    // Every other /api/db/* returns 401 anonymous / 403 {error.code:"subscription_required"}
+    // without access (subscriptionGuard refetches ping on that 403).
     ping: builder.query({
       query: () => '/ping',
     }),

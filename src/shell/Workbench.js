@@ -13,13 +13,14 @@ import Tab from '@mui/material/Tab';
 import Typography from '@mui/material/Typography';
 import SaveIcon from '@mui/icons-material/Save';
 
-import { useGameQuery, useAnalysisQuery } from '../app/api';
+import { useGameQuery, useAnalysisQuery, useCollectionGameQuery } from '../app/api';
 import {
   openTab,
   activateTab,
   closeTab,
   restoreTab,
   selectActivePosition,
+  isUntouchedScratch,
 } from '../model/docSlice';
 import { fromWire } from '../model/gameTree';
 import '../resources/board.css';
@@ -72,7 +73,7 @@ export {
 } from './gameTab';
 
 export default function Workbench() {
-  const { gid, game: gameParam, moves: movesParam, aid } = useParams();
+  const { gid, wgid, game: gameParam, moves: movesParam, aid } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
@@ -156,6 +157,16 @@ export default function Workbench() {
   const gidValid = gidNum !== undefined && Number.isInteger(gidNum) && gidNum > 0;
   const gameQuery = useGameQuery(gidNum, { skip: !gidValid });
 
+  // Personal (collection) game route /w/:wgid -> collection endpoint, tab id `w:<wgid>`.
+  const wgidNum = wgid !== undefined ? Number(wgid) : undefined;
+  const wgidValid = wgidNum !== undefined && Number.isInteger(wgidNum) && wgidNum > 0;
+  const collectionQuery = useCollectionGameQuery(wgidNum, { skip: !wgidValid });
+  // RTK Query keeps the previous arg's data while fetching: only trust a response for THIS wgid.
+  const collectionData =
+    collectionQuery.data && collectionQuery.data.header && Number(collectionQuery.data.header.gid) === wgidNum
+      ? collectionQuery.data
+      : undefined;
+
   const aidNum = aid !== undefined ? Number(aid) : undefined;
   const aidValid = aidNum !== undefined && Number.isInteger(aidNum) && aidNum > 0;
   const analysisQuery = useAnalysisQuery(aidNum, { skip: !aidValid });
@@ -224,6 +235,36 @@ export default function Workbench() {
       return;
     }
 
+    if (wgid !== undefined) {
+      if (!wgidValid) {
+        navigate('/', { replace: true });
+        return;
+      }
+      const key = `w:${wgidNum}`;
+      if (loadedRouteKeyRef.current === key) return;
+      const existing = docs.tabs.find((t) => t.id === key);
+      if (existing) {
+        loadedRouteKeyRef.current = key;
+        if (docs.activeTabId !== key) dispatch(activateTab(key));
+        return;
+      }
+      if (!collectionData) return; // wait for the matching response
+      loadedRouteKeyRef.current = key;
+      const { tree, path } = buildTreeFromMoves(collectionData.moves || []);
+      dispatch(
+        openTab({
+          id: key,
+          kind: 'game',
+          title: gameTitle({ ...collectionData.header, gid: wgidNum }),
+          game: collectionData.header.game || DEFAULT_GAME,
+          gid: wgidNum,
+          tree,
+          cursorPath: path,
+        })
+      );
+      return;
+    }
+
     if (aid !== undefined) {
       if (!aidValid) {
         navigate('/', { replace: true });
@@ -262,10 +303,16 @@ export default function Workbench() {
       }
       const key = `p:${parsed.game}:${parsed.cells.join('-')}`;
       if (loadedRouteKeyRef.current === key) return;
-      const existing = docs.tabs.find((t) => t.id === key);
+      // Empty-board route (/p/:game): an untouched scratch tab of that game (e.g. one made by the
+      // Variant select, which has an auto id) counts as the same tab.
+      const existing =
+        docs.tabs.find((t) => t.id === key) ||
+        (parsed.cells.length === 0
+          ? docs.tabs.find((t) => t.game === parsed.game && isUntouchedScratch(t))
+          : undefined);
       if (existing) {
         loadedRouteKeyRef.current = key;
-        if (docs.activeTabId !== key) dispatch(activateTab(key));
+        if (docs.activeTabId !== existing.id) dispatch(activateTab(existing.id));
         return;
       }
       loadedRouteKeyRef.current = key;
@@ -274,7 +321,7 @@ export default function Workbench() {
         openTab({
           id: key,
           kind: 'scratch',
-          title: `Position ${parsed.game}`,
+          title: parsed.cells.length === 0 ? 'New position' : `Position ${parsed.game}`,
           game: parsed.game,
           tree,
           cursorPath: path,
@@ -294,12 +341,16 @@ export default function Workbench() {
     gid,
     gidValid,
     gidNum,
+    wgid,
+    wgidValid,
+    wgidNum,
     aid,
     aidValid,
     aidNum,
     gameParam,
     movesParam,
     gameQuery.data,
+    collectionData,
     analysisQuery.data,
     docs.tabs,
     docs.activeTabId,
@@ -343,7 +394,11 @@ export default function Workbench() {
     aid !== undefined && aidValid && analysisQuery.isError && !docs.tabs.find((t) => t.id === `a:${aidNum}`)
       ? analysisQuery.error
       : null;
-  const routeLoadError = gameRouteError || analysisRouteError;
+  const personalRouteError =
+    wgid !== undefined && wgidValid && collectionQuery.isError && !docs.tabs.find((t) => t.id === `w:${wgidNum}`)
+      ? collectionQuery.error
+      : null;
+  const routeLoadError = gameRouteError || analysisRouteError || personalRouteError;
 
   // Center pane: tab strip, game header (captures/to-move), transport controls, the interactive
   // board, and the move strip. Each viewer piece reads the active position from docSlice itself.

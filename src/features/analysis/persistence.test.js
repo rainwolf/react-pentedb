@@ -29,9 +29,10 @@ import AppRoutes from '../../app/router';
 vi.mock('../../board/Board', () => ({ default: () => <div data-testid="board-stub" /> }));
 
 vi.mock('../../app/api', () => ({
-  usePingQuery: vi.fn(() => ({ data: { ok: true, auth: null }, refetch: vi.fn() })),
+  usePingQuery: vi.fn(() => ({ data: { ok: true, auth: null, dbAccess: true }, refetch: vi.fn() })),
   useGameQuery: vi.fn(() => ({ data: undefined })),
   useAnalysisQuery: vi.fn(() => ({ data: undefined })),
+  useCollectionGameQuery: vi.fn(() => ({ data: undefined })),
   useAnalysesQuery: vi.fn(() => ({ data: { analyses: [] }, isLoading: false, isError: false })),
   useSaveAnalysisMutation: vi.fn(() => [
     vi.fn(() => ({ unwrap: () => Promise.resolve({}) })),
@@ -106,7 +107,7 @@ function renderAt(url, store) {
 
 beforeEach(() => {
   window.localStorage.clear();
-  usePingQuery.mockReturnValue({ data: { ok: true, auth: null }, refetch: vi.fn() });
+  usePingQuery.mockReturnValue({ data: { ok: true, auth: null, dbAccess: true }, refetch: vi.fn() });
   useAnalysisQuery.mockReturnValue({ data: undefined });
   useAnalysesQuery.mockReturnValue({ data: { analyses: [] }, isLoading: false, isError: false });
   useSaveAnalysisMutation.mockReturnValue([
@@ -223,13 +224,13 @@ describe('AnalysesList', () => {
   }
 
   test('anonymous users get a login hint instead of a list', () => {
-    usePingQuery.mockReturnValue({ data: { ok: true, auth: null }, refetch: vi.fn() });
+    usePingQuery.mockReturnValue({ data: { ok: true, auth: null, dbAccess: true }, refetch: vi.fn() });
     renderList(makeStore());
     expect(screen.getByText(/log in/i)).toBeTruthy();
   });
 
   test('lists saved analyses and opens the tab (fromWire) on row click', async () => {
-    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest' }, refetch: vi.fn() });
+    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest', dbAccess: true }, refetch: vi.fn() });
     useAnalysesQuery.mockReturnValue({
       data: { analyses: [{ aid: 7, name: 'Opening trap', game: 1, updated: 0 }] },
       isLoading: false,
@@ -252,7 +253,7 @@ describe('AnalysesList', () => {
   // to fire on that STALE object — opening an a:<new> tab with the OLD analysis's name and tree,
   // then cancelling the real fetch. The fix waits until the fetched response's own aid matches.
   test('opening a second analysis while RTK still holds the first analysis’s data loads the CLICKED one', async () => {
-    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest' }, refetch: vi.fn() });
+    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest', dbAccess: true }, refetch: vi.fn() });
     useAnalysesQuery.mockReturnValue({
       data: {
         analyses: [
@@ -306,7 +307,7 @@ describe('AnalysesList', () => {
   });
 
   test('delete asks to confirm, then calls the delete mutation with the aid', async () => {
-    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest' }, refetch: vi.fn() });
+    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest', dbAccess: true }, refetch: vi.fn() });
     useAnalysesQuery.mockReturnValue({
       data: { analyses: [{ aid: 7, name: 'Opening trap', game: 1, updated: 0 }] },
       isLoading: false,
@@ -337,7 +338,7 @@ describe('Workbench save flow', () => {
   });
 
   test('anonymous Save writes recovery and prompts login (no mutation)', async () => {
-    usePingQuery.mockReturnValue({ data: { ok: true, auth: null }, refetch: vi.fn() });
+    usePingQuery.mockReturnValue({ data: { ok: true, auth: null, dbAccess: true }, refetch: vi.fn() });
     const saveTrigger = vi.fn(() => ({ unwrap: () => Promise.resolve({}) }));
     useSaveAnalysisMutation.mockReturnValue([saveTrigger, { isLoading: false }]);
     const store = makeStore();
@@ -351,7 +352,7 @@ describe('Workbench save flow', () => {
   });
 
   test('logged-in Save POSTs then re-keys the tab; a second Save PUTs', async () => {
-    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest' }, refetch: vi.fn() });
+    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest', dbAccess: true }, refetch: vi.fn() });
     const saveTrigger = vi.fn((arg) => ({
       unwrap: () => Promise.resolve(arg.aid == null ? { aid: 42 } : { ok: true }),
     }));
@@ -387,7 +388,7 @@ describe('Workbench save flow', () => {
   });
 
   test('beforeunload snapshots dirty tabs to recovery (logged in or not)', async () => {
-    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest' }, refetch: vi.fn() });
+    usePingQuery.mockReturnValue({ data: { ok: true, auth: 'iostest', dbAccess: true }, refetch: vi.fn() });
     const store = makeStore();
     renderAt('/', store);
     await waitFor(() => expect(store.getState().docs.tabs).toHaveLength(1));
