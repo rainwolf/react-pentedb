@@ -125,7 +125,7 @@ const uiSlice = createSlice({
       if (prev == null || !f) return;
       const next = { ...f, site: null, event: null, round: null, section: null };
       const isDefault =
-        !next.player1Name && !next.player2Name && !next.afterDate && !next.beforeDate &&
+        !next.player1Name && !next.player2Name && !(next.player1RatingAbove > 0) && !(next.player2RatingAbove > 0) && !next.afterDate && !next.beforeDate &&
         (next.player1Seat ?? 1) === 1 && (next.player2Seat ?? 2) === 2 && (next.winner ?? 0) === 0;
       state.filters = isDefault ? null : next;
     },

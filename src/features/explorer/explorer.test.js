@@ -11,7 +11,7 @@
 //     rendering (the rotation correctness seam) — and is filled by heatColor(heatT(winPct,
 //     domain)) over the shown set (the green→red RELATIVE ramp).
 //   - ExplorerPanel: queries usePositionStatsQuery with the CANONICAL active line; a stats
-//     row click dispatches applyMove(canonicalCell); "games through here" drives ResultsList
+//     row click dispatches applyMove(canonicalCell); "games through here" (now in SearchPanel) drives ResultsList
 //     in position-constrained mode with the canonical line.
 //   - ResultsList: position-constrained mode (moves prop) includes `moves` in the search arg
 //     and shows a "games through this position" header; filter-only mode still omits `moves`.
@@ -531,10 +531,10 @@ describe('ExplorerPanel', () => {
     expect(selectActivePosition(store.getState()).moves).toEqual([180, 200]);
   });
 
-  test('"games through here" drives ResultsList in position-constrained mode with the canonical line', () => {
+  test('does NOT render the "games through here" list any more (moved to SearchPanel)', () => {
     renderWith(makeStore([180], [0]), <ExplorerPanel />);
-    const arg = useGamesSearchQuery.mock.calls.at(-1)[0];
-    expect(arg.moves).toEqual([180]);
+    expect(useGamesSearchQuery).not.toHaveBeenCalled();
+    expect(screen.queryByText('Games through here')).toBeNull();
   });
 
   test('shows the position summary (total games) from the stats response', () => {

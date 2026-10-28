@@ -5,11 +5,13 @@
 //      (BoardHeatOverlay), so this panel no longer carries its own mini-board preview;
 //   3. StatsRows — the candidate continuations; hovering a row lights that cell up brightly on
 //      the board (via the shared ui hover cell), clicking plays the move;
-//   4. "games through here" — a ResultsList constrained to games passing through this line.
+//
+// The "games through here" ResultsList no longer lives here: it moved to the LEFT SearchPanel
+// ("Search" tab, below the filter form), fed by the same debounced position, scope and filters.
 //
 // FILTERS. The ONE applied filter set (ui slice, edited by the left FilterForm) rides along with
-// the position on BOTH the stats query and the games list (desktop parity), and is summarised as
-// chips above the stats with a clear-all.
+// the position on BOTH the stats query and the games list in SearchPanel (desktop parity), and is
+// summarised as chips above the stats with a clear-all.
 //
 // CANONICAL vs DISPLAY. Everything that leaves this panel toward the model is canonical: the
 // position-stats query uses the canonical line (selectActivePosition().moves, via the debounce
@@ -24,7 +26,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
-import Divider from '@mui/material/Divider';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -50,7 +51,6 @@ import {
 import { applyMove } from '../../model/docSlice';
 import { gridSizeForGame } from '../../board/boardGeometry';
 import PanelError from '../../shell/PanelError';
-import ResultsList from '../search/ResultsList';
 import useDebouncedPosition from './useDebouncedPosition';
 import StatsRows from './StatsRows';
 import ActiveFilters from './ActiveFilters';
@@ -108,7 +108,7 @@ export default function ExplorerPanel() {
   const heatOn = useSelector(selectHeatOnBoard);
   const { data: ping } = usePingQuery();
   // Effective scope coerces mine/both -> archive when unauthenticated, so a logout/expiry
-  // never leaves the stats + "games through here" list firing 401-ing authed queries.
+  // never leaves the stats + the SearchPanel games list firing 401-ing authed queries.
   const scope = selectEffectiveScope(ping?.auth ?? null, useSelector(selectScope));
 
   const filters = useSelector(selectFilters);
@@ -242,12 +242,6 @@ export default function ExplorerPanel() {
         </Typography>
       )}
       <StatsRows rows={rows} gridSize={gridSize} onSelect={handleSelect} onHover={handleHover} hoverCell={hoverCell} />
-
-      <Divider sx={{ mt: 1 }} />
-      <Box sx={{ px: 1, pt: 1 }}>
-        <Typography variant="subtitle2">Games through here</Typography>
-      </Box>
-      <ResultsList game={game} scope={scope} filters={filters} moves={moves} />
     </Box>
   );
 }

@@ -551,7 +551,7 @@ describe('row click opens a game tab at the final position', () => {
 // SearchPanel — composition / auth-gated scope + import / scope wiring
 // ===================================================================================
 describe('SearchPanel', () => {
-  test('anonymous: no scope toggle, no import button, and NO games list (the explorer owns it)', () => {
+  test('anonymous: no scope toggle, no import button; games-through-here list lives here', () => {
     const store = makeStore();
     renderWith(store, <SearchPanel />);
     expect(screen.getByRole('heading', { name: 'Search' })).toBeTruthy();
@@ -559,7 +559,19 @@ describe('SearchPanel', () => {
     expect(screen.queryByLabelText('Mine')).toBeNull();
     expect(screen.queryByRole('button', { name: /Import/i })).toBeNull();
     expect(screen.getByLabelText('Player 1')).toBeTruthy(); // the filter form is there
-    expect(useGamesSearchQuery).not.toHaveBeenCalled(); // the left filter-only list is gone
+    // The list moved here from the explorer: heading + a position-constrained query.
+    expect(screen.getByText('Games through here')).toBeTruthy();
+    // No open position: placeholder, and no unconstrained games query.
+    expect(screen.getByText(/list games through a position/i)).toBeTruthy();
+    expect(useGamesSearchQuery).not.toHaveBeenCalled();
+  });
+
+  test('with an open position: the list queries that position', () => {
+    const store = makeStore();
+    store.dispatch(openTab({ kind: 'scratch', title: 'T', game: 1 }));
+    renderWith(store, <SearchPanel />);
+    expect(screen.queryByText(/list games through a position/i)).toBeNull();
+    expect(useGamesSearchQuery.mock.calls.at(-1)[0]).toMatchObject({ game: 1, scope: 'archive' });
   });
 
   test('logged-in: shows the Archive/Mine/Both toggle and an Import button', () => {
@@ -769,7 +781,8 @@ describe('Variant select drives the workbench', () => {
     fireEvent.click(screen.getByRole('option', { name: 'Gomoku' }));
     const t = store.getState().docs.tabs.find((x) => x.id === store.getState().docs.activeTabId);
     expect(t.game).toBe(5);
-    expect(useGamesSearchQuery).not.toHaveBeenCalledWith(expect.objectContaining({ game: 5 }));
+    // the list follows the tab's game, but the applied filters are untouched until submit
+    expect(useGamesSearchQuery.mock.calls.at(-1)[0].filters).toBeNull();
   });
 });
 
@@ -792,6 +805,54 @@ describe('Variant select follows the active tab', () => {
     expect(sel()).toBe('Gomoku');
     expect(store.getState().docs.tabs).toHaveLength(before);
     expect(store.getState().docs.activeTabId).toBe('b');
-    expect(useGamesSearchQuery).not.toHaveBeenCalledWith(expect.objectContaining({ game: 5 }));
+    // the list follows the tab's game, but the applied filters are untouched until submit
+    expect(useGamesSearchQuery.mock.calls.at(-1)[0].filters).toBeNull();
+  });
+});
+
+// =================================================================================== 
+// per-player "rating above" filters
+// ===================================================================================
+describe('rating-above filters', () => {
+  test('buildFilters omits ratings at 0 and includes them when set', () => {
+    expect(buildFilters({ ...DEFAULT_DRAFT, player1Name: 'a' })).not.toHaveProperty('player1RatingAbove');
+    expect(buildFilters({ ...DEFAULT_DRAFT, player1Name: 'a', player1RatingAbove: 0, player2RatingAbove: 0 })).not.toHaveProperty('player2RatingAbove');
+    const f = buildFilters({ ...DEFAULT_DRAFT, player1RatingAbove: 1900, player2RatingAbove: 2200 });
+    expect(f).toMatchObject({ player1RatingAbove: 1900, player2RatingAbove: 2200, player1Seat: 1, player2Seat: 2 });
+    expect(buildFilters({ ...DEFAULT_DRAFT, eitherSeat: true, player2RatingAbove: 1600 })).toMatchObject({ player1Seat: 0, player2Seat: 0 });
+  });
+
+  test('draftFromFilters round-trips ratings', () => {
+    const d = { ...DEFAULT_DRAFT, game: 1, player1RatingAbove: 2000 };
+    expect(draftFromFilters(buildFilters(d), 1)).toEqual(d);
+  });
+
+  test('FilterForm renders both selects (Any, 1600..2900) and choosing applies the filter', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    const sel1 = screen.getByLabelText('Player 1 rating');
+    expect(screen.getByLabelText('Player 2 rating')).toBeTruthy();
+    expect(sel1.textContent).toBe('Any');
+    fireEvent.mouseDown(sel1);
+    const opts = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(opts).toEqual(['Any', ...Array.from({ length: 14 }, (_, i) => `${1600 + i * 100}+`)]);
+    fireEvent.click(screen.getByRole('option', { name: '1900+' }));
+    expect(selectFilters(store.getState())).toMatchObject({ player1RatingAbove: 1900 });
+    expect(selectFilters(store.getState())).not.toHaveProperty('player2RatingAbove');
+    // back to Any removes the field (and the filter collapses to null)
+    fireEvent.mouseDown(screen.getByLabelText('Player 1 rating'));
+    fireEvent.click(screen.getByRole('option', { name: 'Any' }));
+    expect(selectFilters(store.getState())).toBeNull();
+  });
+
+  test('Clear filters resets ratings', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    fireEvent.mouseDown(screen.getByLabelText('Player 2 rating'));
+    fireEvent.click(screen.getByRole('option', { name: '2500+' }));
+    expect(selectFilters(store.getState())).toMatchObject({ player2RatingAbove: 2500 });
+    fireEvent.click(screen.getByText('Clear filters'));
+    expect(selectFilters(store.getState())).toBeNull();
+    expect(screen.getByLabelText('Player 2 rating').textContent).toBe('Any');
   });
 });
