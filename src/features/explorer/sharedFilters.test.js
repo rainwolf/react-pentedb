@@ -81,7 +81,7 @@ describe('filterChipLabels', () => {
           ...DEFAULT_DRAFT,
           player1Name: 'alice',
           player2Name: 'bob',
-          player2Seat: 0,
+          eitherSeat: true,
           site: 'Pente.org',
           event: 'Champs',
           afterDate: '2020-01-01',
@@ -90,12 +90,21 @@ describe('filterChipLabels', () => {
       )
     ).toEqual([
       'Player 1: alice',
-      'Player 2: bob (any seat)',
+      'Player 2: bob',
+      'Either seat',
       'Site: Pente.org',
       'Event: Champs',
       'After 2020-01-01',
       'Winner: Player 2',
     ]);
+  });
+});
+
+describe('Either seat chip', () => {
+  test('shown only when ticked AND a player name is set', () => {
+    expect(filterChipLabels(buildFilters({ ...DEFAULT_DRAFT, player1Name: 'alice', eitherSeat: true }))).toContain('Either seat');
+    expect(filterChipLabels(buildFilters({ ...DEFAULT_DRAFT, site: 'Pente.org', eitherSeat: true }))).toEqual(['Site: Pente.org']);
+    expect(filterChipLabels(buildFilters({ ...DEFAULT_DRAFT, player1Name: 'alice' }))).toEqual(['Player 1: alice']);
   });
 });
 

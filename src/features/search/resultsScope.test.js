@@ -1,6 +1,6 @@
 // ResultsList review fixes: scope-honest header, personal-row opening via the collection opener,
 // page state keyed on the search (no stale page-2+ request), "x of N" counts loaded rows only,
-// and the FilterForm seat-select hint.
+// and the FilterForm "Either seat" checkbox.
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';
@@ -8,7 +8,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import docsReducer from '../../model/docSlice';
-import uiReducer from '../../app/uiSlice';
+import uiReducer, { setFilters, selectFilters } from '../../app/uiSlice';
 
 vi.mock('../../app/api', () => ({
   useGamesSearchQuery: vi.fn(),
@@ -110,9 +110,33 @@ describe('paging', () => {
   });
 });
 
-describe('FilterForm seat hint', () => {
-  test('disabled seat selects carry "Enter a player name first" until a name is entered', () => {
+describe('FilterForm Either seat checkbox', () => {
+  const playerBox = (label) => screen.getByRole('combobox', { name: label });
+
+  test('no seat selects; one always-enabled "Either seat" checkbox; no helper text', () => {
     render(wrap(store(), <FilterForm initialGame={1} />));
-    expect(screen.getAllByText('Enter a player name first')).toHaveLength(2);
+    expect(screen.queryByRole('combobox', { name: /seat/i })).toBeNull();
+    expect(screen.queryByText('Enter a player name first')).toBeNull();
+    const box = screen.getByRole('checkbox', { name: 'Either seat' });
+    expect(box.checked).toBe(false);
+    expect(box.disabled).toBe(false);
+  });
+
+  test('ticking applies both seats as 0 to the store; unticking restores 1 and 2', () => {
+    const st = store();
+    render(wrap(st, <FilterForm initialGame={1} />));
+    fireEvent.change(playerBox('Player 1'), { target: { value: 'alice' } });
+    fireEvent.blur(playerBox('Player 1'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Either seat' }));
+    expect(selectFilters(st.getState())).toMatchObject({ player1Name: 'alice', player1Seat: 0, player2Seat: 0 });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Either seat' }));
+    expect(selectFilters(st.getState())).toMatchObject({ player1Seat: 1, player2Seat: 2 });
+  });
+
+  test('rehydrates ticked from applied {0,0} seats', () => {
+    const st = store();
+    st.dispatch(setFilters({ player1Name: 'alice', player1Seat: 0, player2Name: null, player2Seat: 0, site: null, event: null, round: null, section: null, afterDate: null, beforeDate: null, winner: 0 }));
+    render(wrap(st, <FilterForm initialGame={1} />));
+    expect(screen.getByRole('checkbox', { name: 'Either seat' }).checked).toBe(true);
   });
 });

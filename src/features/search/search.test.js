@@ -20,7 +20,7 @@ import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 
 import docsReducer, { openTab, activateTab } from '../../model/docSlice';
-import uiReducer, { setFilters, selectFilters } from '../../app/uiSlice';
+import uiReducer, { setFilters, selectFilters, clearFilters } from '../../app/uiSlice';
 
 vi.mock('../../app/api', () => ({
   useVenuesQuery: vi.fn(),
@@ -74,10 +74,6 @@ function renderWith(store, node) {
   );
 }
 
-function renderPlain(node) {
-  return render(<ThemeProvider theme={theme}>{node}</ThemeProvider>);
-}
-
 const HEADER = {
   gid: 999,
   source: 'archive',
@@ -120,6 +116,15 @@ describe('buildFilters — exact wire filter object', () => {
     expect(buildFilters(DEFAULT_DRAFT)).toBeNull();
   });
 
+  test('"Either seat" with no player name is inert: null when nothing else is set, seats stay 1/2', () => {
+    expect(buildFilters({ ...DEFAULT_DRAFT, eitherSeat: true })).toBeNull();
+    expect(buildFilters({ ...DEFAULT_DRAFT, eitherSeat: true, site: 'Pente.org' })).toMatchObject({
+      player1Seat: 1,
+      player2Seat: 2,
+      site: 'Pente.org',
+    });
+  });
+
   test('a single touched field produces the full 11-key DTO; the rest at documented defaults', () => {
     const draft = { ...DEFAULT_DRAFT, player1Name: 'alice' };
     expect(buildFilters(draft)).toEqual({
@@ -141,9 +146,8 @@ describe('buildFilters — exact wire filter object', () => {
     const draft = {
       ...DEFAULT_DRAFT,
       player1Name: '  Alice ',
-      player1Seat: 2,
       player2Name: 'Bob',
-      player2Seat: 1,
+      eitherSeat: true,
       site: 'Pente.org',
       event: 'Champs',
       round: '1',
@@ -154,9 +158,9 @@ describe('buildFilters — exact wire filter object', () => {
     };
     expect(buildFilters(draft)).toEqual({
       player1Name: 'Alice',
-      player1Seat: 2,
+      player1Seat: 0,
       player2Name: 'Bob',
-      player2Seat: 1,
+      player2Seat: 0,
       site: 'Pente.org',
       event: 'Champs',
       round: '1',
@@ -679,10 +683,75 @@ describe('FilterForm applies to the shared store', () => {
     expect(applied(store)).toMatchObject({ player1Name: 'dan', site: null, event: null });
   });
 
+  test('"Either seat" ticked with no player name: nothing applied, store untouched, box stays ticked', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    const before = store.getState().ui;
+    const box = screen.getByRole('checkbox', { name: 'Either seat' });
+    fireEvent.click(box);
+    expect(box.checked).toBe(true);
+    expect(applied(store)).toBeNull();
+    expect(store.getState().ui).toBe(before); // no dispatch changed state, so no refetch either
+    act(() => {
+      store.dispatch(setFilters(null)); // re-sync path must not untick it
+    });
+    expect(screen.getByRole('checkbox', { name: 'Either seat' }).checked).toBe(true);
+  });
+
+  test('"Either seat" ticked with a player name applies seats 0/0; clearing the name goes back to null', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    const p2 = screen.getByLabelText('Player 2');
+    fireEvent.change(p2, { target: { value: 'bob' } });
+    fireEvent.blur(p2);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Either seat' }));
+    expect(applied(store)).toMatchObject({ player2Name: 'bob', player1Seat: 0, player2Seat: 0 });
+
+    fireEvent.change(screen.getByLabelText('Player 2'), { target: { value: '' } });
+    fireEvent.blur(screen.getByLabelText('Player 2'));
+    expect(applied(store)).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Either seat' }).checked).toBe(true);
+  });
+
+  test('"Clear filters" unticks "Either seat"', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    const p1 = screen.getByLabelText('Player 1');
+    fireEvent.change(p1, { target: { value: 'alice' } });
+    fireEvent.blur(p1);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Either seat' }));
+    expect(applied(store)).toMatchObject({ player1Seat: 0, player2Seat: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(screen.getByRole('checkbox', { name: 'Either seat' }).checked).toBe(false);
+  });
+
+  test('the chip "Clear all" (clearFilters) unticks "Either seat"', () => {
+    const store = makeStore();
+    renderWith(store, <FilterForm initialGame={1} />);
+    const p1 = screen.getByLabelText('Player 1');
+    fireEvent.change(p1, { target: { value: 'alice' } });
+    fireEvent.blur(p1);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Either seat' }));
+    act(() => {
+      store.dispatch(clearFilters()); // what ActiveFilters' "Clear all" dispatches (ExplorerPanel)
+    });
+    expect(applied(store)).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Either seat' }).checked).toBe(false);
+  });
+
   test('draftFromFilters inverts buildFilters', () => {
-    const d = { ...DEFAULT_DRAFT, game: 3, player1Name: 'x', player2Seat: 0, winner: 1, afterDate: '2020-01-01' };
+    const d = { ...DEFAULT_DRAFT, game: 3, player1Name: 'x', eitherSeat: true, winner: 1, afterDate: '2020-01-01' };
     expect(draftFromFilters(buildFilters(d), 3)).toEqual(d);
     expect(draftFromFilters(null, 3)).toEqual({ ...DEFAULT_DRAFT, game: 3 });
+  });
+
+  test('draftFromFilters ticks "Either seat" only when both applied seats are 0', () => {
+    expect(draftFromFilters({ player1Name: 'x', player1Seat: 0, player2Seat: 0 }, 1).eitherSeat).toBe(true);
+    expect(draftFromFilters({ player1Name: 'x', player1Seat: 1, player2Seat: 2 }, 1).eitherSeat).toBe(false);
+    // legacy combo (not reachable from the form any more): unticked, seats reset to 1/2 on next apply
+    const legacy = draftFromFilters({ player1Name: 'x', player1Seat: 2, player2Seat: 1 }, 1);
+    expect(legacy.eitherSeat).toBe(false);
+    expect(buildFilters({ ...legacy, player2Name: 'y' })).toMatchObject({ player1Seat: 1, player2Seat: 2 });
   });
 });
 
