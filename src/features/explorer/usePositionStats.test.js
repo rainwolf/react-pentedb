@@ -30,12 +30,21 @@ describe('usePositionStats', () => {
     expect(result.current.data).toBe(GOMOKU);
   });
 
-  test('same-game move while fetching keeps the previous data (no flicker)', () => {
+  test('same-game move while fetching clears the previous data (new query), then shows the new', () => {
     usePositionStatsQuery.mockReturnValue({ data: PENTE, currentData: PENTE, isFetching: false });
     const { result, rerender } = renderHook(({ m }) => usePositionStats({ game: 1, moves: m }), { initialProps: { m: [180] } });
     usePositionStatsQuery.mockReturnValue({ data: PENTE, currentData: undefined, isFetching: true });
     rerender({ m: [180, 181] });
-    expect(result.current.data).toBe(PENTE);
+    expect(result.current.data).toBeUndefined();
+    usePositionStatsQuery.mockReturnValue({ data: GOMOKU, currentData: GOMOKU, isFetching: false });
+    rerender({ m: [180, 181] });
+    expect(result.current.data).toBe(GOMOKU);
+  });
+
+  test('an error never shows the previous result', () => {
+    usePositionStatsQuery.mockReturnValue({ data: PENTE, currentData: undefined, isFetching: false, error: { status: 500 } });
+    const { result } = renderHook(() => usePositionStats({ game: 1, moves: [180] }));
+    expect(result.current.data).toBeUndefined();
   });
   test('a filter change while fetching hides the old filters\' data; scope change too', () => {
     const F = { player1Name: 'alice' };

@@ -22,7 +22,7 @@ import {
   persistGamesPageSize,
   GAMES_PAGE_SIZES,
 } from '../../app/uiSlice';
-import useGatedResult, { resultKey } from '../../app/useGatedResult';
+import useGatedResult from '../../app/useGatedResult';
 import { buildTreeFromMoves, gameTitle, gameTabId } from '../../shell/gameTab';
 import PanelError from '../../shell/PanelError';
 import WinnerStone from './WinnerStone';
@@ -85,8 +85,8 @@ function GameRow({ header: h, opening, onClick }) {
 // fetched independently while the rows simply stack. Gated on the same key as page 0 so a
 // filter/scope/game change never paints an old page under the new answer. Reports how many rows
 // it has actually loaded so "x of N" counts loaded rows only.
-function MorePage({ index, arg, gateKey, openingId, onRowClick, onCount }) {
-  const res = useGatedResult(useGamesSearchQuery(arg), gateKey);
+function MorePage({ index, arg, openingId, onRowClick, onCount }) {
+  const res = useGatedResult(useGamesSearchQuery(arg));
   const games = (res.data && res.data.games) || [];
   useEffect(() => {
     onCount(index, games.length);
@@ -173,10 +173,8 @@ export default function ResultsList({ game, scope, filters, moves }) {
     hasMoves
       ? { game, moves, scope, filters, offset, limit: pageSize }
       : { game, scope, filters, offset, limit: pageSize };
-  // The retention gate keys on game+scope+filters (NOT the move line): stale rows for old filters
-  // must never render as current, while stepping through moves keeps the list from flickering.
-  const gateKey = resultKey(game, scope, filters);
-  const { data, isFetching, error } = useGatedResult(useGamesSearchQuery(argFor(0)), gateKey);
+  // Every new query clears the list until its own response lands (useGatedResult).
+  const { data, isFetching, error } = useGatedResult(useGamesSearchQuery(argFor(0)));
   const games = (data && data.games) || [];
   const total = (data && data.total) || 0;
   const shown = games.length + Object.entries(cur.counts).reduce((a, [i, n]) => (Number(i) < pages - 1 ? a + n : a), 0);
@@ -254,7 +252,6 @@ export default function ResultsList({ game, scope, filters, moves }) {
             key={`${searchKey}#${i + 1}`}
             index={i}
             arg={argFor((i + 1) * pageSize)}
-            gateKey={gateKey}
             openingId={openingId}
             onRowClick={handleRowClick}
             onCount={onCount}

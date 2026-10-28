@@ -614,6 +614,55 @@ describe('BoardHeatOverlay', () => {
     expect(c.getAttribute('data-cell')).toBe(String(symCell(240, 1, N)));
   });
 
+  test('new query in flight clears heat stones; the new result then renders', () => {
+    const store = makeBoardStore([180]);
+    const { container, rerender } = renderWith(store, <BoardHeatOverlay />);
+    const ghosts = () => container.querySelectorAll('[data-testid="heat-overlay"] circle').length;
+    expect(ghosts()).toBe(NEXT_MOVES.length);
+    // RTK keeps the previous arg's `data` while the new arg fetches; currentData is undefined
+    usePositionStatsQuery.mockReturnValue({ data: STATS, currentData: undefined, isFetching: true });
+    rerender(
+      <Provider store={store}>
+        <ThemeProvider theme={theme}>
+          <BoardHeatOverlay />
+        </ThemeProvider>
+      </Provider>
+    );
+    expect(ghosts()).toBe(0);
+    const NEXT = { ...STATS, nextMoves: [{ move: 300, games: 4, wins: 2, winPct: 50 }] };
+    usePositionStatsQuery.mockReturnValue({ data: NEXT, currentData: NEXT, isFetching: false });
+    rerender(
+      <Provider store={store}>
+        <ThemeProvider theme={theme}>
+          <BoardHeatOverlay />
+        </ThemeProvider>
+      </Provider>
+    );
+    expect(ghosts()).toBe(1);
+  });
+
+  test('ExplorerPanel: moves list clears while a new query fetches, then shows the new rows', () => {
+    const store = makeStore([180], [0]);
+    const ui = () => (
+      <Provider store={store}>
+        <ThemeProvider theme={theme}>
+          <ExplorerPanel />
+        </ThemeProvider>
+      </Provider>
+    );
+    const { rerender } = render(ui());
+    expect(screen.queryByTestId('stats-row-200')).not.toBeNull();
+    usePositionStatsQuery.mockReturnValue({ data: STATS, currentData: undefined, isFetching: true });
+    rerender(ui());
+    expect(screen.queryByTestId('stats-row-200')).toBeNull();
+    expect(screen.queryByText('Loading…')).not.toBeNull();
+    const NEXT = { ...STATS, nextMoves: [{ move: 300, games: 4, wins: 2, winPct: 50 }] };
+    usePositionStatsQuery.mockReturnValue({ data: NEXT, currentData: NEXT, isFetching: false });
+    rerender(ui());
+    expect(screen.queryByTestId('stats-row-300')).not.toBeNull();
+    expect(screen.queryByTestId('stats-row-200')).toBeNull();
+  });
+
   test('toggle OFF: renders nothing AND fires no position-stats network query (skip)', () => {
     const store = makeBoardStore([180]);
     store.dispatch(setHeatOnBoard(false));

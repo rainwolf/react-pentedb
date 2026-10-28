@@ -378,10 +378,17 @@ describe('ResultsList — Show more + page size', () => {
     useGamesSearchQuery.mockReturnValue({ data: OLD, currentData: undefined, isFetching: true });
     rerender(ui(F2, [180]));
     expect(screen.queryByText(/oldfilter/)).toBeNull();
-    // ...but a mere move change under the SAME filters keeps the list (no flicker)
-    useGamesSearchQuery.mockReturnValue({ data: OLD, currentData: OLD, isFetching: false });
+    // new result arrives -> rendered
+    const NEW = { total: 1, games: [{ ...HEADER, gid: 2, player1: { name: 'newfilter' } }] };
+    useGamesSearchQuery.mockReturnValue({ data: NEW, currentData: NEW, isFetching: false });
     rerender(ui(F2, [180]));
-    useGamesSearchQuery.mockReturnValue({ data: OLD, currentData: undefined, isFetching: true });
+    expect(screen.getByText(/newfilter/)).toBeTruthy();
+    // a move change under the SAME filters is a new query too: list clears while it fetches
+    useGamesSearchQuery.mockReturnValue({ data: NEW, currentData: undefined, isFetching: true });
+    rerender(ui(F2, [180, 181]));
+    expect(screen.queryByText(/newfilter/)).toBeNull();
+    expect(screen.queryByText(/No games found/)).toBeNull(); // loading, not empty
+    useGamesSearchQuery.mockReturnValue({ data: OLD, currentData: OLD, isFetching: false });
     rerender(ui(F2, [180, 181]));
     expect(screen.getByText(/oldfilter/)).toBeTruthy();
   });
