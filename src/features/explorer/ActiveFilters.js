@@ -6,19 +6,14 @@ import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 
-const SEAT_WORD = { 0: 'any seat', 1: 'seat 1', 2: 'seat 2' };
-
-function playerChip(label, name, seat, defaultSeat) {
-  if (!name) return null;
-  return seat === defaultSeat ? `${label}: ${name}` : `${label}: ${name} (${SEAT_WORD[seat] ?? `seat ${seat}`})`;
-}
-
 // Pure: applied Filters DTO (or null) -> chip labels, in form order.
 export function filterChipLabels(filters) {
   if (!filters) return [];
+  const eitherSeat = filters.player1Seat === 0 && filters.player2Seat === 0;
   const out = [
-    playerChip('Player 1', filters.player1Name, filters.player1Seat ?? 1, 1),
-    playerChip('Player 2', filters.player2Name, filters.player2Seat ?? 2, 2),
+    filters.player1Name ? `Player 1: ${filters.player1Name}` : null,
+    filters.player2Name ? `Player 2: ${filters.player2Name}` : null,
+    eitherSeat && (filters.player1Name || filters.player2Name) ? 'Either seat' : null,
     filters.site ? `Site: ${filters.site}` : null,
     filters.event ? `Event: ${filters.event}` : null,
     filters.round ? `Round: ${filters.round}` : null,

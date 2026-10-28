@@ -1,6 +1,6 @@
 // Filter form for the ONE shared filter set (Phase 1 `filters` DTO, sent by BOTH position-stats and
 // games/search). The form edits a local DRAFT and APPLIES it to the ui slice: selects (site, event,
-// seats, winner, variant) apply at once; text fields (players, round, section, dates) apply on
+// either-seat, winner, variant) apply at once; text fields (players, round, section, dates) apply on
 // Enter / blur / autocomplete pick; "Search" is an explicit apply; "Clear filters" resets both.
 // The draft re-syncs from the store when the applied filters change elsewhere (chip clear-all).
 //
@@ -14,6 +14,8 @@ import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 import Autocomplete from '@mui/material/Autocomplete';
 import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
 
 import { usePlayersQuery } from '../../app/api';
 import { selectFilters, setFilters, clearFilters } from '../../app/uiSlice';
@@ -22,9 +24,8 @@ import useVenueOptions from './useVenueOptions';
 export const DEFAULT_DRAFT = {
   game: 1,
   player1Name: '',
-  player1Seat: 1,
   player2Name: '',
-  player2Seat: 2,
+  eitherSeat: false,
   site: '',
   event: '',
   round: '',
@@ -53,8 +54,12 @@ export function buildFilters(draft) {
   const section = norm(draft.section);
   const afterDate = norm(draft.afterDate);
   const beforeDate = norm(draft.beforeDate);
-  const player1Seat = draft.player1Seat == null ? 1 : draft.player1Seat;
-  const player2Seat = draft.player2Seat == null ? 2 : draft.player2Seat;
+  // "Either seat" ticked = both seats 0 (any seat); unticked = Player 1 is seat 1, Player 2 is seat 2.
+  // Seats only mean something with a player name (the backend ignores them otherwise), so with no
+  // name set they stay 1/2 and an otherwise-empty form still serializes to null.
+  const anySeat = !!draft.eitherSeat && (player1Name != null || player2Name != null);
+  const player1Seat = anySeat ? 0 : 1;
+  const player2Seat = anySeat ? 0 : 2;
   const winner = draft.winner == null ? 0 : draft.winner;
 
   const isDefault =
@@ -93,9 +98,8 @@ export function draftFromFilters(filters, game) {
     ...DEFAULT_DRAFT,
     game,
     player1Name: f.player1Name ?? '',
-    player1Seat: f.player1Seat ?? DEFAULT_DRAFT.player1Seat,
     player2Name: f.player2Name ?? '',
-    player2Seat: f.player2Seat ?? DEFAULT_DRAFT.player2Seat,
+    eitherSeat: f.player1Seat === 0 && f.player2Seat === 0,
     site: f.site ?? '',
     event: f.event ?? '',
     round: f.round ?? '',
@@ -129,8 +133,8 @@ function PlayerField({ label, value, onChange, onPick, onCommit }) {
       options={options}
       inputValue={value}
       value={value || null}
-      onInputChange={(e, val) => onChange(val)}
-      onChange={(e, val) => onPick(val || '')}
+      onInputChange={(_e, val) => onChange(val)}
+      onChange={(_e, val) => onPick(val || '')}
       renderInput={(params) => (
         <TextField {...params} label={label} margin="dense" fullWidth onBlur={onCommit} />
       )}
@@ -213,59 +217,32 @@ export default function FilterForm({ initialGame = 1, syncGame, onVariantChange 
           ))}
         </TextField>
 
-        <Stack direction="row" spacing={1}>
-          <Box sx={{ flex: 2 }}>
-            <PlayerField
-              label="Player 1"
-              value={draft.player1Name}
-              onChange={(v) => update({ player1Name: v })}
-              onPick={(v) => commit({ player1Name: v })}
-              onCommit={commitDraft}
+        <PlayerField
+          label="Player 1"
+          value={draft.player1Name}
+          onChange={(v) => update({ player1Name: v })}
+          onPick={(v) => commit({ player1Name: v })}
+          onCommit={commitDraft}
+        />
+        <PlayerField
+          label="Player 2"
+          value={draft.player2Name}
+          onChange={(v) => update({ player2Name: v })}
+          onPick={(v) => commit({ player2Name: v })}
+          onCommit={commitDraft}
+        />
+        <FormControlLabel
+          sx={{ mx: 0 }}
+          control={
+            <Checkbox
+              size="small"
+              checked={draft.eitherSeat}
+              onChange={(e) => commit({ eitherSeat: e.target.checked })}
+              inputProps={{ 'aria-description': 'Match players in either seat' }}
             />
-          </Box>
-          <TextField
-            select
-            size="small"
-            margin="dense"
-            label="Player 1 seat"
-            sx={{ flex: 1 }}
-            disabled={!draft.player1Name}
-            helperText={!draft.player1Name ? 'Enter a player name first' : undefined}
-            value={draft.player1Seat}
-            onChange={(e) => commit({ player1Seat: Number(e.target.value) })}
-          >
-            <MenuItem value={0}>Any seat</MenuItem>
-            <MenuItem value={1}>Seat 1</MenuItem>
-            <MenuItem value={2}>Seat 2</MenuItem>
-          </TextField>
-        </Stack>
-
-        <Stack direction="row" spacing={1}>
-          <Box sx={{ flex: 2 }}>
-            <PlayerField
-              label="Player 2"
-              value={draft.player2Name}
-              onChange={(v) => update({ player2Name: v })}
-              onPick={(v) => commit({ player2Name: v })}
-              onCommit={commitDraft}
-            />
-          </Box>
-          <TextField
-            select
-            size="small"
-            margin="dense"
-            label="Player 2 seat"
-            sx={{ flex: 1 }}
-            disabled={!draft.player2Name}
-            helperText={!draft.player2Name ? 'Enter a player name first' : undefined}
-            value={draft.player2Seat}
-            onChange={(e) => commit({ player2Seat: Number(e.target.value) })}
-          >
-            <MenuItem value={0}>Any seat</MenuItem>
-            <MenuItem value={1}>Seat 1</MenuItem>
-            <MenuItem value={2}>Seat 2</MenuItem>
-          </TextField>
-        </Stack>
+          }
+          label="Either seat"
+        />
 
         <TextField
           select
