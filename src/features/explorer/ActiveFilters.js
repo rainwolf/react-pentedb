@@ -13,7 +13,11 @@ export function filterChipLabels(filters) {
   const out = [
     filters.player1Name ? `Player 1: ${filters.player1Name}` : null,
     filters.player2Name ? `Player 2: ${filters.player2Name}` : null,
-    eitherSeat && (filters.player1Name || filters.player2Name) ? 'Either seat' : null,
+    filters.player1RatingAbove > 0 ? `P1 ${filters.player1RatingAbove}+` : null,
+    filters.player2RatingAbove > 0 ? `P2 ${filters.player2RatingAbove}+` : null,
+    eitherSeat &&
+    (filters.player1Name || filters.player2Name || filters.player1RatingAbove > 0 || filters.player2RatingAbove > 0)
+      ? 'Either seat' : null,
     filters.site ? `Site: ${filters.site}` : null,
     filters.event ? `Event: ${filters.event}` : null,
     filters.round ? `Round: ${filters.round}` : null,

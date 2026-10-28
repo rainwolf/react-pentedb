@@ -12,17 +12,21 @@ import { createTree, addMove } from '../../model/gameTree';
 
 vi.mock('../../app/api', () => ({
   usePositionStatsQuery: vi.fn(),
+  useVenuesQuery: vi.fn(),
+  usePlayersQuery: vi.fn(),
   useGamesSearchQuery: vi.fn(),
   useGameQuery: vi.fn(),
   usePingQuery: vi.fn(),
 }));
 
 // eslint-disable-next-line import/first
-import { usePositionStatsQuery, useGamesSearchQuery, useGameQuery, usePingQuery } from '../../app/api';
+import { usePositionStatsQuery, useVenuesQuery, usePlayersQuery, useGamesSearchQuery, useGameQuery, usePingQuery } from '../../app/api';
 // eslint-disable-next-line import/first
 import uiReducer, { setFilters, selectFilters } from '../../app/uiSlice';
 // eslint-disable-next-line import/first
 import ExplorerPanel from './ExplorerPanel';
+// eslint-disable-next-line import/first
+import SearchPanel from '../search/SearchPanel';
 // eslint-disable-next-line import/first
 import BoardHeatOverlay from './BoardHeatOverlay';
 // eslint-disable-next-line import/first
@@ -52,6 +56,7 @@ function renderWith(store) {
     <Provider store={store}>
       <ThemeProvider theme={theme}>
         <ExplorerPanel />
+        <SearchPanel />
       </ThemeProvider>
     </Provider>
   );
@@ -62,6 +67,10 @@ beforeEach(() => {
   useGamesSearchQuery.mockReset();
   useGameQuery.mockReset();
   usePingQuery.mockReset();
+  useVenuesQuery.mockReset();
+  usePlayersQuery.mockReset();
+  useVenuesQuery.mockReturnValue({ data: { variants: [] }, isLoading: false });
+  usePlayersQuery.mockReturnValue({ data: { players: [] }, isFetching: false });
   usePositionStatsQuery.mockReturnValue({ data: STATS, isFetching: false });
   useGamesSearchQuery.mockReturnValue({ data: { total: 0, games: [] }, isFetching: false });
   useGameQuery.mockReturnValue({ data: undefined, isSuccess: false });
@@ -234,5 +243,17 @@ describe('review fixes: empty board + scope honesty', () => {
     cleanup();
     renderWith(makeStore([180]));
     expect(screen.queryByTestId('scope-caveat')).toBeNull();
+  });
+});
+
+describe('rating-above chips', () => {
+  test('chips for P1/P2 rating, none at 0', () => {
+    const f = buildFilters({ ...DEFAULT_DRAFT, player1RatingAbove: 1900, player2RatingAbove: 2100 });
+    expect(filterChipLabels(f)).toEqual(['P1 1900+', 'P2 2100+']);
+    expect(filterChipLabels(buildFilters({ ...DEFAULT_DRAFT, player1Name: 'a' })).some((l) => l.includes('>'))).toBe(false);
+  });
+  test('Either seat chip shows for rating-only either-seat', () => {
+    const f = buildFilters({ ...DEFAULT_DRAFT, player1RatingAbove: 1900, eitherSeat: true });
+    expect(filterChipLabels(f)).toEqual(['P1 1900+', 'Either seat']);
   });
 });

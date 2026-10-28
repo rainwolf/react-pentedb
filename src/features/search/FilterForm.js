@@ -26,6 +26,8 @@ export const DEFAULT_DRAFT = {
   player1Name: '',
   player2Name: '',
   eitherSeat: false,
+  player1RatingAbove: 0,
+  player2RatingAbove: 0,
   site: '',
   event: '',
   round: '',
@@ -57,7 +59,11 @@ export function buildFilters(draft) {
   // "Either seat" ticked = both seats 0 (any seat); unticked = Player 1 is seat 1, Player 2 is seat 2.
   // Seats only mean something with a player name (the backend ignores them otherwise), so with no
   // name set they stay 1/2 and an otherwise-empty form still serializes to null.
-  const anySeat = !!draft.eitherSeat && (player1Name != null || player2Name != null);
+  // Rating-above filters (0 = off) are omitted from the wire object; they also make seats meaningful.
+  const p1Rating = Number(draft.player1RatingAbove) > 0 ? Number(draft.player1RatingAbove) : 0;
+  const p2Rating = Number(draft.player2RatingAbove) > 0 ? Number(draft.player2RatingAbove) : 0;
+  const anySeat =
+    !!draft.eitherSeat && (player1Name != null || player2Name != null || p1Rating > 0 || p2Rating > 0);
   const player1Seat = anySeat ? 0 : 1;
   const player2Seat = anySeat ? 0 : 2;
   const winner = draft.winner == null ? 0 : draft.winner;
@@ -73,10 +79,12 @@ export function buildFilters(draft) {
     beforeDate == null &&
     player1Seat === 1 &&
     player2Seat === 2 &&
+    p1Rating === 0 &&
+    p2Rating === 0 &&
     winner === 0;
   if (isDefault) return null;
 
-  return {
+  const out = {
     player1Name,
     player1Seat,
     player2Name,
@@ -89,6 +97,9 @@ export function buildFilters(draft) {
     beforeDate,
     winner,
   };
+  if (p1Rating > 0) out.player1RatingAbove = p1Rating;
+  if (p2Rating > 0) out.player2RatingAbove = p2Rating;
+  return out;
 }
 
 // Inverse of buildFilters: applied DTO (or null) -> form draft for `game`.
@@ -100,6 +111,8 @@ export function draftFromFilters(filters, game) {
     player1Name: f.player1Name ?? '',
     player2Name: f.player2Name ?? '',
     eitherSeat: f.player1Seat === 0 && f.player2Seat === 0,
+    player1RatingAbove: f.player1RatingAbove > 0 ? f.player1RatingAbove : 0,
+    player2RatingAbove: f.player2RatingAbove > 0 ? f.player2RatingAbove : 0,
     site: f.site ?? '',
     event: f.event ?? '',
     round: f.round ?? '',
@@ -119,14 +132,18 @@ function useDebounced(value, delayMs) {
   return debounced;
 }
 
-function PlayerField({ label, value, onChange, onPick, onCommit }) {
+export const RATING_OPTIONS = [0, ...Array.from({ length: 14 }, (_, i) => 1600 + i * 100)];
+
+function PlayerField({ label, value, onChange, onPick, onCommit, rating, onRating }) {
   const debounced = useDebounced(value, 300).trim();
   const skip = debounced.length < 2;
   const { data } = usePlayersQuery(debounced, { skip });
   const options = (!skip && data && data.players) || [];
 
   return (
+    <Stack direction="row" spacing={0.5} alignItems="center">
     <Autocomplete
+      sx={{ flex: 1, minWidth: 0 }}
       freeSolo
       disablePortal
       size="small"
@@ -139,6 +156,27 @@ function PlayerField({ label, value, onChange, onPick, onCommit }) {
         <TextField {...params} label={label} margin="dense" fullWidth onBlur={onCommit} />
       )}
     />
+    <TextField
+      select
+      size="small"
+      margin="dense"
+      label="Rating"
+      value={rating}
+      onChange={(e) => onRating(Number(e.target.value))}
+      sx={{ width: 108, flexShrink: 0 }}
+      SelectProps={{
+        SelectDisplayProps: { 'aria-label': `${label} rating` },
+        MenuProps: { disablePortal: false },
+        renderValue: (v) => (Number(v) === 0 ? 'Any' : `${v}+`),
+      }}
+    >
+      {RATING_OPTIONS.map((r) => (
+        <MenuItem key={r} value={r}>
+          {r === 0 ? 'Any' : `${r}+`}
+        </MenuItem>
+      ))}
+    </TextField>
+    </Stack>
   );
 }
 
@@ -222,6 +260,8 @@ export default function FilterForm({ initialGame = 1, syncGame, onVariantChange 
           value={draft.player1Name}
           onChange={(v) => update({ player1Name: v })}
           onPick={(v) => commit({ player1Name: v })}
+          rating={draft.player1RatingAbove}
+          onRating={(r) => commit({ player1RatingAbove: r })}
           onCommit={commitDraft}
         />
         <PlayerField
@@ -229,6 +269,8 @@ export default function FilterForm({ initialGame = 1, syncGame, onVariantChange 
           value={draft.player2Name}
           onChange={(v) => update({ player2Name: v })}
           onPick={(v) => commit({ player2Name: v })}
+          rating={draft.player2RatingAbove}
+          onRating={(r) => commit({ player2RatingAbove: r })}
           onCommit={commitDraft}
         />
         <FormControlLabel
