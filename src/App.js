@@ -6,6 +6,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { store } from './app/store';
 import AppRoutes from './app/router';
 import ErrorBoundary from './shell/ErrorBoundary';
+import { ROUTER_BASENAME } from './shell/basename';
 import { ThemeModeProvider, useThemeModeContext, getTheme } from './shell/theme';
 
 function ThemedShell() {
@@ -14,7 +15,7 @@ function ThemedShell() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter>
+      <BrowserRouter basename={ROUTER_BASENAME || undefined}>
         <ErrorBoundary>
           <AppRoutes />
         </ErrorBoundary>
