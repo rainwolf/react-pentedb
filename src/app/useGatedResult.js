@@ -1,19 +1,11 @@
 // useGatedResult - closes the RTK Query "data retains the previous arg's result while fetching"
-// hazard across a caller-defined KEY. `key` names everything that must never bleed from an old
-// answer into a new one (game, scope, applied filters...); args that may keep their stale data
-// while refetching (the move line - no flicker while stepping) stay out of the key.
-// Returns the query result with `data` undefined while a different-keyed fetch is in flight.
-import { useRef } from 'react';
-
-export default function useGatedResult(result, key) {
-  const settledKey = useRef(null);
-  const settled = result.currentData !== undefined || (!result.isFetching && !result.error);
-  if (settled) settledKey.current = key;
-  if (settled || settledKey.current === key) return result;
+// hazard. Every new query (any arg change: move line, game, scope, filters...) shows NOTHING until
+// its own response lands: while `currentData` is undefined and the request is in flight (or failed),
+// `data` is returned undefined, so no stale heat / candidate rows / games list is painted.
+// `isFetching` is untouched so loading indicators keep working. Results without `currentData`
+// (plain mocks) pass through when settled.
+export default function useGatedResult(result) {
+  if (result.currentData !== undefined) return result;
+  if (!result.isFetching && !result.error) return result;
   return { ...result, data: undefined };
-}
-
-// Stable string key for a (game, scope, filters) triple.
-export function resultKey(game, scope, filters) {
-  return `${game}|${scope}|${JSON.stringify(filters ?? null)}`;
 }
